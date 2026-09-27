@@ -1,0 +1,8 @@
+{
+  "name": "Wayground - Game Edukasi Interaktif & Bank Soal",
+  "description": "Platform game edukasi interaktif dan bank soal terlengkap untuk siswa & guru. Mainkan Kuis Kilat, Labirin Kata, Tebak Gambar, Roda Putar, Kartu Cocok, dan buat kuis kustom bertenaga AI.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
