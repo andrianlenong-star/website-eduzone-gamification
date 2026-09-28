@@ -8,6 +8,7 @@ import { QuizResult } from './QuizResult';
 import { sounds } from '../../utils/audio';
 import {
   Timer,
+  TimerOff,
   Flame,
   Zap,
   Snowflake,
@@ -25,6 +26,8 @@ interface Props {
   onBack: () => void;
   onOpenWorksheet: (quiz: QuizSet) => void;
   onEarnReward?: (xp: number, coins: number) => void;
+  timerEnabled?: boolean;
+  onToggleTimer?: () => void;
 }
 
 const QUESTION_TIME_SECONDS = 25;
@@ -34,6 +37,8 @@ export const QuizPlayer: React.FC<Props> = ({
   onBack,
   onOpenWorksheet,
   onEarnReward,
+  timerEnabled = true,
+  onToggleTimer,
 }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_SECONDS);
@@ -68,7 +73,7 @@ export const QuizPlayer: React.FC<Props> = ({
 
   // Timer countdown
   useEffect(() => {
-    if (quizFinished || isAnswerSubmitted || isFrozen) return;
+    if (!timerEnabled || quizFinished || isAnswerSubmitted || isFrozen) return;
 
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
@@ -85,7 +90,7 @@ export const QuizPlayer: React.FC<Props> = ({
     }, 1000);
 
     return () => clearInterval(timerRef.current);
-  }, [currentIndex, isAnswerSubmitted, isFrozen, quizFinished]);
+  }, [currentIndex, isAnswerSubmitted, isFrozen, quizFinished, timerEnabled]);
 
   const handleTimeExpired = () => {
     if (isAnswerSubmitted) return;
@@ -144,7 +149,7 @@ export const QuizPlayer: React.FC<Props> = ({
       else if (newStreak >= 2) multiplier = 1.5;
 
       const basePoints = 1000;
-      const speedBonus = Math.round(timeLeft * 30);
+      const speedBonus = timerEnabled ? Math.round(timeLeft * 30) : 350;
       const earned = Math.round((basePoints + speedBonus) * multiplier);
 
       setTotalScore((prev) => prev + earned);
@@ -188,7 +193,7 @@ export const QuizPlayer: React.FC<Props> = ({
     if (isAnswerSubmitted || !currentQuestion) return;
     setSelectedAnswer(ans);
 
-    const timeSpent = QUESTION_TIME_SECONDS - timeLeft;
+    const timeSpent = timerEnabled ? QUESTION_TIME_SECONDS - timeLeft : 0;
     let isCorrect = false;
 
     if (currentQuestion.type === 'multiple_choice') {
@@ -372,30 +377,69 @@ export const QuizPlayer: React.FC<Props> = ({
       </div>
 
       {/* Timer & Power-ups Bar */}
-      <div className="flex items-center justify-between gap-3 px-1">
-        {/* Animated Timer Pill */}
-        <div className="flex items-center gap-2 flex-1 max-w-xs">
-          <div
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-mono font-bold text-sm border transition-all ${
-              isFrozen
-                ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 animate-pulse'
-                : timeLeft <= 5
-                ? 'bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse'
-                : 'bg-slate-800/80 border-slate-700 text-slate-200'
-            }`}
-          >
-            <Timer className="w-4 h-4 shrink-0" />
-            <span>{isFrozen ? 'BEKU (10s)' : `${timeLeft}s`}</span>
-          </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        {/* Animated Timer Pill / Untimed Mode */}
+        <div className="flex items-center gap-2 flex-1 max-w-sm">
+          {timerEnabled ? (
+            <>
+              <div
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-mono font-bold text-sm border transition-all ${
+                  isFrozen
+                    ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 animate-pulse'
+                    : timeLeft <= 5
+                    ? 'bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse'
+                    : 'bg-slate-800/80 border-slate-700 text-slate-200'
+                }`}
+              >
+                <Timer className="w-4 h-4 shrink-0 text-amber-400" />
+                <span>{isFrozen ? 'BEKU (10s)' : `${timeLeft}s`}</span>
+              </div>
 
-          <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden hidden sm:block">
-            <div
-              className={`h-full transition-all duration-1000 ${
-                timeLeft <= 5 ? 'bg-rose-500' : 'bg-cyan-500'
+              <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden hidden sm:block">
+                <div
+                  className={`h-full transition-all duration-1000 ${
+                    timeLeft <= 5 ? 'bg-rose-500' : 'bg-cyan-500'
+                  }`}
+                  style={{ width: `${timerPercent}%` }}
+                />
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold text-xs shadow-sm">
+              <TimerOff className="w-4 h-4 shrink-0 text-emerald-400" />
+              <span>Bebas Waktu (Santai)</span>
+            </div>
+          )}
+
+          {/* Quick Toggle Button directly in game */}
+          {onToggleTimer && (
+            <button
+              type="button"
+              onClick={onToggleTimer}
+              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
+                timerEnabled
+                  ? 'bg-slate-800/90 border-slate-700 text-slate-400 hover:text-amber-300 hover:border-amber-500/40'
+                  : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40'
               }`}
-              style={{ width: `${timerPercent}%` }}
-            />
-          </div>
+              title={
+                timerEnabled
+                  ? 'Klik untuk Matikan Timer (Mode Santai tanpa batas waktu)'
+                  : 'Klik untuk Nyalakan Timer (Mode Hitungan Mundur 25s)'
+              }
+            >
+              {timerEnabled ? (
+                <>
+                  <TimerOff className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="hidden md:inline">Matikan Timer</span>
+                </>
+              ) : (
+                <>
+                  <Timer className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="hidden md:inline">Nyalakan Timer</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Powerups Buttons */}
@@ -413,16 +457,18 @@ export const QuizPlayer: React.FC<Props> = ({
             </button>
           )}
 
-          <button
-            type="button"
-            disabled={usedFreeze || isAnswerSubmitted}
-            onClick={handleUseFreeze}
-            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-cyan-300 border border-cyan-500/30 flex items-center gap-1 transition-all cursor-pointer"
-            title="Bekukan waktu selama 10 detik"
-          >
-            <Snowflake className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Bekukan</span>
-          </button>
+          {timerEnabled && (
+            <button
+              type="button"
+              disabled={usedFreeze || isAnswerSubmitted}
+              onClick={handleUseFreeze}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-cyan-300 border border-cyan-500/30 flex items-center gap-1 transition-all cursor-pointer"
+              title="Bekukan waktu selama 10 detik"
+            >
+              <Snowflake className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Bekukan</span>
+            </button>
+          )}
 
           <button
             type="button"

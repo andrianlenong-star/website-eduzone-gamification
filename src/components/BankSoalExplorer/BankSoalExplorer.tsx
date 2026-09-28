@@ -33,6 +33,8 @@ import {
   Check,
   Eye,
   EyeOff,
+  Timer,
+  TimerOff,
 } from 'lucide-react';
 
 interface Props {
@@ -42,6 +44,8 @@ interface Props {
   onImportQuiz?: (quiz: QuizSet) => void;
   onImportMultiple?: (quizzes: QuizSet[]) => void;
   onDeleteQuiz?: (id: string) => void;
+  timerEnabled?: boolean;
+  onToggleTimer?: () => void;
 }
 
 export const BankSoalExplorer: React.FC<Props> = ({
@@ -51,6 +55,8 @@ export const BankSoalExplorer: React.FC<Props> = ({
   onImportQuiz = () => {},
   onImportMultiple = () => {},
   onDeleteQuiz,
+  timerEnabled = true,
+  onToggleTimer,
 }) => {
   const [viewTab, setViewTab] = useState<'pakets' | 'butir-soal'>('pakets');
   const [searchTerm, setSearchTerm] = useState('');
@@ -816,6 +822,57 @@ export const BankSoalExplorer: React.FC<Props> = ({
                 Pilih format permainan interaktif yang ingin kamu mainkan bersama paket soal ini:
               </p>
             </div>
+
+            {/* Timer Setting Option Card */}
+            {onToggleTimer && (
+              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-800/90 border border-slate-700/80 shadow-inner">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                      timerEnabled
+                        ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
+                        : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                    }`}
+                  >
+                    {timerEnabled ? <Timer className="w-5 h-5" /> : <TimerOff className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <div className="text-xs font-black text-white flex items-center gap-1.5">
+                      <span>Batas Waktu Soal</span>
+                      <span
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-extrabold uppercase ${
+                          timerEnabled
+                            ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
+                            : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                        }`}
+                      >
+                        {timerEnabled ? 'Aktif (25 detik)' : 'Nonaktif (Bebas Waktu)'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {timerEnabled
+                        ? 'Timer 25 detik per soal. Klik tombol di kanan jika ingin santai.'
+                        : 'Bebas waktu tanpa batas detik untuk belajar dengan rileks.'}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    sounds.playClick();
+                    onToggleTimer();
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer border ${
+                    timerEnabled
+                      ? 'bg-slate-700 hover:bg-slate-600 text-rose-300 border-rose-500/30'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white border-emerald-400 shadow-md'
+                  }`}
+                >
+                  {timerEnabled ? 'Matikan Timer' : 'Aktifkan Timer'}
+                </button>
+              </div>
+            )}
 
             {/* Game Modes Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

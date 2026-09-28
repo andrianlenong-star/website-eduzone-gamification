@@ -102,6 +102,10 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'bank-soal' | 'creator'>('bank-soal');
   const [activeGame, setActiveGame] = useState<{ quiz: QuizSet; mode: GameMode } | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sounds.isEnabled());
+  const [timerEnabled, setTimerEnabled] = useState<boolean>(() => {
+    const saved = localStorage.getItem('wayground_timer_enabled');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile>(() => {
@@ -119,6 +123,15 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('wayground_profile', JSON.stringify(playerProfile));
   }, [playerProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('wayground_timer_enabled', String(timerEnabled));
+  }, [timerEnabled]);
+
+  const handleToggleTimer = () => {
+    setTimerEnabled((prev) => !prev);
+    sounds.playClick();
+  };
 
   // Initial Sync from URL params and Server Storage
   useEffect(() => {
@@ -272,6 +285,8 @@ export default function App() {
         }}
         soundEnabled={soundEnabled}
         onToggleSound={handleToggleSound}
+        timerEnabled={timerEnabled}
+        onToggleTimer={handleToggleTimer}
         playerProfile={playerProfile}
         onOpenProfile={() => setIsProfileOpen(true)}
         onHomeClick={() => {
@@ -291,6 +306,8 @@ export default function App() {
                 onBack={() => setActiveGame(null)}
                 onOpenWorksheet={(quiz) => setActiveGame({ quiz, mode: 'cetak-lks' })}
                 onEarnReward={handleEarnReward}
+                timerEnabled={timerEnabled}
+                onToggleTimer={handleToggleTimer}
               />
             )}
 
@@ -307,6 +324,8 @@ export default function App() {
                 quizSet={activeGame.quiz}
                 onBack={() => setActiveGame(null)}
                 onEarnReward={handleEarnReward}
+                timerEnabled={timerEnabled}
+                onToggleTimer={handleToggleTimer}
               />
             )}
 
@@ -343,6 +362,8 @@ export default function App() {
                 onImportQuiz={handleImportQuiz}
                 onImportMultiple={handleImportMultiple}
                 onDeleteQuiz={handleDeleteQuiz}
+                timerEnabled={timerEnabled}
+                onToggleTimer={handleToggleTimer}
               />
             )}
 

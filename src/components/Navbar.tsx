@@ -1,6 +1,6 @@
 import React from 'react';
 import { PlayerProfile, GameMode } from '../types';
-import { Volume2, VolumeX, Sparkles, BookOpen, User, Flame, Gamepad2, PlusCircle } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, BookOpen, User, Flame, Gamepad2, PlusCircle, Timer, TimerOff } from 'lucide-react';
 import { sounds } from '../utils/audio';
 import { EduZoneLogo } from './EduZoneLogo';
 
@@ -9,6 +9,8 @@ interface Props {
   setActiveTab: (tab: 'bank-soal' | 'creator') => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
+  timerEnabled?: boolean;
+  onToggleTimer?: () => void;
   playerProfile: PlayerProfile;
   onOpenProfile: () => void;
   onHomeClick: () => void;
@@ -19,6 +21,8 @@ export const Navbar: React.FC<Props> = ({
   setActiveTab,
   soundEnabled,
   onToggleSound,
+  timerEnabled = true,
+  onToggleTimer,
   playerProfile,
   onOpenProfile,
   onHomeClick,
@@ -69,8 +73,40 @@ export const Navbar: React.FC<Props> = ({
           </button>
         </nav>
 
-        {/* Right Controls: Sound & Profile */}
+        {/* Right Controls: Timer, Sound & Profile */}
         <div className="flex items-center gap-2">
+          {/* Timer Toggle */}
+          {onToggleTimer && (
+            <button
+              type="button"
+              onClick={onToggleTimer}
+              className={`p-2 sm:px-3 sm:py-2 rounded-xl border transition-all cursor-pointer flex items-center gap-1.5 ${
+                timerEnabled
+                  ? 'bg-slate-800 border-slate-700 text-amber-400 hover:text-amber-300 hover:border-amber-500/40'
+                  : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400 hover:bg-emerald-900/40'
+              }`}
+              title={
+                timerEnabled
+                  ? 'Timer Permainan: AKTIF (Klik untuk Matikan Timer / Mode Santai)'
+                  : 'Timer Permainan: NONAKTIF / SANTAI (Klik untuk Nyalakan Timer)'
+              }
+            >
+              {timerEnabled ? (
+                <>
+                  <Timer className="w-4 h-4 shrink-0" />
+                  <span className="text-[11px] font-extrabold hidden md:inline">Timer ON</span>
+                </>
+              ) : (
+                <>
+                  <TimerOff className="w-4 h-4 shrink-0 text-emerald-400" />
+                  <span className="text-[11px] font-extrabold text-emerald-300 hidden md:inline">
+                    Santai (Tanpa Timer)
+                  </span>
+                </>
+              )}
+            </button>
+          )}
+
           {/* Sound Toggle */}
           <button
             type="button"

@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { QuizSet } from '../../types';
 import { sounds } from '../../utils/audio';
-import { ArrowLeft, RotateCcw, Trophy, Check } from 'lucide-react';
+import { ArrowLeft, RotateCcw, Trophy, Check, Timer, TimerOff } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface Props {
   quizSet: QuizSet;
   onBack: () => void;
   onEarnReward?: (xp: number, coins: number) => void;
+  timerEnabled?: boolean;
+  onToggleTimer?: () => void;
 }
 
 interface CardItem {
@@ -19,7 +21,13 @@ interface CardItem {
   isMatched: boolean;
 }
 
-export const MemoryMatchGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward }) => {
+export const MemoryMatchGame: React.FC<Props> = ({
+  quizSet,
+  onBack,
+  onEarnReward,
+  timerEnabled = true,
+  onToggleTimer,
+}) => {
   const [cards, setCards] = useState<CardItem[]>([]);
   const [flippedIndices, setFlippedIndices] = useState<number[]>([]);
   const [moves, setMoves] = useState(0);
@@ -89,10 +97,10 @@ export const MemoryMatchGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward
 
   // Timer
   useEffect(() => {
-    if (isGameOver) return;
+    if (isGameOver || !timerEnabled) return;
     const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => clearInterval(interval);
-  }, [isGameOver]);
+  }, [isGameOver, timerEnabled]);
 
   const handleCardClick = (index: number) => {
     if (flippedIndices.length >= 2 || cards[index].isFlipped || cards[index].isMatched) {
@@ -165,10 +173,34 @@ export const MemoryMatchGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward
           </span>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-mono font-bold text-slate-400 bg-slate-800 px-2.5 py-1 rounded-lg">
-            {seconds}s
-          </span>
+        <div className="flex items-center gap-2">
+          {timerEnabled ? (
+            <span className="text-xs font-mono font-bold text-amber-300 bg-slate-800 border border-slate-700 px-2.5 py-1 rounded-xl flex items-center gap-1">
+              <Timer className="w-3.5 h-3.5 text-amber-400" />
+              <span>{seconds}s</span>
+            </span>
+          ) : (
+            <span className="text-xs font-bold text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-1 rounded-xl flex items-center gap-1">
+              <TimerOff className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Santai</span>
+            </span>
+          )}
+
+          {onToggleTimer && (
+            <button
+              type="button"
+              onClick={onToggleTimer}
+              className={`p-2 rounded-xl border transition-colors cursor-pointer ${
+                timerEnabled
+                  ? 'text-slate-400 hover:text-white bg-slate-800 border-slate-700'
+                  : 'text-emerald-300 bg-emerald-950/30 border-emerald-500/40'
+              }`}
+              title={timerEnabled ? 'Matikan timer stopwatch' : 'Nyalakan timer stopwatch'}
+            >
+              {timerEnabled ? <TimerOff className="w-4 h-4" /> : <Timer className="w-4 h-4" />}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={setupGame}
