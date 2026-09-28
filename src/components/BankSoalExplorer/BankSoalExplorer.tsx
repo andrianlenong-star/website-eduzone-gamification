@@ -73,6 +73,8 @@ export const BankSoalExplorer: React.FC<Props> = ({
   const [shareModalQuiz, setShareModalQuiz] = useState<QuizSet | null>(null);
   // Modal for import / export / sync
   const [isImportExportOpen, setIsImportExportOpen] = useState(false);
+  // Modal for deleting a quiz
+  const [quizToDelete, setQuizToDelete] = useState<QuizSet | null>(null);
 
   const customQuizzes = quizSets.filter((q) => q.isCustom);
 
@@ -482,15 +484,14 @@ export const BankSoalExplorer: React.FC<Props> = ({
                       <span>Bagikan</span>
                     </button>
 
-                    {quiz.isCustom && onDeleteQuiz && (
+                    {onDeleteQuiz && (
                       <button
                         type="button"
                         onClick={() => {
-                          if (window.confirm(`Hapus kuis "${quiz.title}" dari daftar?`)) {
-                            onDeleteQuiz(quiz.id);
-                          }
+                          sounds.playClick();
+                          setQuizToDelete(quiz);
                         }}
-                        className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer"
+                        className="p-2 text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl transition-colors cursor-pointer border border-transparent hover:border-rose-500/30"
                         title="Hapus Kuis Ini"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -996,6 +997,66 @@ export const BankSoalExplorer: React.FC<Props> = ({
           }}
           onClose={() => setIsImportExportOpen(false)}
         />
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {quizToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="bg-slate-900 border-2 border-rose-500/50 rounded-3xl p-6 md:p-8 max-w-md w-full space-y-5 shadow-2xl relative">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30 shrink-0">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white">
+                  Hapus Paket Kuis?
+                </h3>
+                <span className="text-xs text-rose-400 font-bold">
+                  Kuis akan dihapus dari Bank Soal
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-slate-800/80 border border-slate-700/80 p-4 rounded-2xl space-y-1">
+              <div className="text-sm font-extrabold text-white">
+                {quizToDelete.title}
+              </div>
+              <div className="text-xs text-slate-400">
+                {quizToDelete.category} • {quizToDelete.targetClass || quizToDelete.grade} • {quizToDelete.questions.length} Butir Soal
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Apakah Anda yakin ingin menghapus paket soal ini? Anda masih bisa mengimpor kembali kuis ini nanti jika memiliki file cadangannya.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playClick();
+                  setQuizToDelete(null);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs cursor-pointer transition-colors border border-slate-700"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onDeleteQuiz) {
+                    onDeleteQuiz(quizToDelete.id);
+                  }
+                  setQuizToDelete(null);
+                }}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs cursor-pointer shadow-lg shadow-rose-950/50 transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Ya, Hapus Kuis</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

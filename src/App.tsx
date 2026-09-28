@@ -84,19 +84,40 @@ const INITIAL_PROFILE: PlayerProfile = {
 };
 
 export default function App() {
+  const [deletedQuizIds, setDeletedQuizIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('wayground_deleted_quiz_ids');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return [];
+  });
+
   const [quizSets, setQuizSets] = useState<QuizSet[]>(() => {
+    let deletedSet = new Set<string>();
+    const savedDeleted = localStorage.getItem('wayground_deleted_quiz_ids');
+    if (savedDeleted) {
+      try {
+        const parsed = JSON.parse(savedDeleted);
+        if (Array.isArray(parsed)) deletedSet = new Set(parsed);
+      } catch (e) {}
+    }
+
     const saved = localStorage.getItem('wayground_custom_quizzes');
+    let initialList = DEFAULT_QUIZ_SETS;
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          return deduplicateQuizzes(DEFAULT_QUIZ_SETS, parsed);
+          initialList = deduplicateQuizzes(DEFAULT_QUIZ_SETS, parsed);
         }
       } catch (e) {
-        return DEFAULT_QUIZ_SETS;
+        initialList = DEFAULT_QUIZ_SETS;
       }
     }
-    return DEFAULT_QUIZ_SETS;
+    return initialList.filter((q) => !deletedSet.has(q.id));
   });
 
   const [activeTab, setActiveTab] = useState<'bank-soal' | 'creator'>('bank-soal');
@@ -171,12 +192,22 @@ export default function App() {
 
     // 2. Fetch quizzes stored on server and merge with localStorage and DEFAULT_QUIZ_SETS
     fetchServerQuizzes().then((serverQuizzes) => {
+      let currentDeleted = new Set<string>();
+      const savedDeleted = localStorage.getItem('wayground_deleted_quiz_ids');
+      if (savedDeleted) {
+        try {
+          const parsed = JSON.parse(savedDeleted);
+          if (Array.isArray(parsed)) currentDeleted = new Set(parsed);
+        } catch (e) {}
+      }
+
       if (serverQuizzes && serverQuizzes.length > 0) {
         setQuizSets((prev) => {
           const merged = deduplicateQuizzes(serverQuizzes, prev, DEFAULT_QUIZ_SETS);
-          const customOnly = merged.filter((q) => q.isCustom);
+          const filtered = merged.filter((q) => !currentDeleted.has(q.id));
+          const customOnly = filtered.filter((q) => q.isCustom);
           localStorage.setItem('wayground_custom_quizzes', JSON.stringify(customOnly));
-          return merged;
+          return filtered;
         });
       }
 
@@ -186,7 +217,8 @@ export default function App() {
         try {
           const parsed = JSON.parse(localCustom);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            syncCustomQuizzesToServer(parsed);
+            const valid = parsed.filter((q: any) => !currentDeleted.has(q.id));
+            syncCustomQuizzesToServer(valid);
           }
         } catch {
           // Ignore
@@ -206,7 +238,15 @@ export default function App() {
 
   const handleSaveQuiz = (newQuiz: QuizSet) => {
     newQuiz.isCustom = true;
-    const updated = deduplicateQuizzes([newQuiz], quizSets, DEFAULT_QUIZ_SETS);
+
+    // Un-delete if this quiz ID was previously deleted
+    const updatedDeleted = deletedQuizIds.filter((dId) => dId !== newQuiz.id);
+    setDeletedQuizIds(updatedDeleted);
+    localStorage.setItem('wayground_deleted_quiz_ids', JSON.stringify(updatedDeleted));
+
+    const updated = deduplicateQuizzes([newQuiz], quizSets, DEFAULT_QUIZ_SETS).filter(
+      (q) => !updatedDeleted.includes(q.id)
+    );
     setQuizSets(updated);
 
     // Save only custom quizzes to localStorage
@@ -222,7 +262,15 @@ export default function App() {
 
   const handleImportQuiz = (quiz: QuizSet) => {
     quiz.isCustom = true;
-    const updated = deduplicateQuizzes([quiz], quizSets, DEFAULT_QUIZ_SETS);
+
+    // Un-delete if previously marked as deleted
+    const updatedDeleted = deletedQuizIds.filter((dId) => dId !== quiz.id);
+    setDeletedQuizIds(updatedDeleted);
+    localStorage.setItem('wayground_deleted_quiz_ids', JSON.stringify(updatedDeleted));
+
+    const updated = deduplicateQuizzes([quiz], quizSets, DEFAULT_QUIZ_SETS).filter(
+      (q) => !updatedDeleted.includes(q.id)
+    );
     setQuizSets(updated);
 
     const customOnly = updated.filter((q) => q.isCustom);
@@ -232,7 +280,16 @@ export default function App() {
 
   const handleImportMultiple = (quizzes: QuizSet[]) => {
     const tagged = quizzes.map((q) => ({ ...q, isCustom: true }));
-    const updated = deduplicateQuizzes(tagged, quizSets, DEFAULT_QUIZ_SETS);
+    const importedIds = new Set(quizzes.map((q) => q.id));
+
+    // Un-delete any of the imported quizzes
+    const updatedDeleted = deletedQuizIds.filter((dId) => !importedIds.has(dId));
+    setDeletedQuizIds(updatedDeleted);
+    localStorage.setItem('wayground_deleted_quiz_ids', JSON.stringify(updatedDeleted));
+
+    const updated = deduplicateQuizzes(tagged, quizSets, DEFAULT_QUIZ_SETS).filter(
+      (q) => !updatedDeleted.includes(q.id)
+    );
     setQuizSets(updated);
 
     const customOnly = updated.filter((q) => q.isCustom);
@@ -241,11 +298,27 @@ export default function App() {
   };
 
   const handleDeleteQuiz = (id: string) => {
-    const updated = quizSets.filter((q) => q.id !== id);
-    setQuizSets(updated);
+    // 1. Mark ID in deletedQuizIds to persist removal permanently
+    const nextDeleted = Array.from(new Set([...deletedQuizIds, id]));
+    setDeletedQuizIds(nextDeleted);
+    localStorage.setItem('wayground_deleted_quiz_ids', JSON.stringify(nextDeleted));
 
-    const customOnly = updated.filter((q) => q.isCustom);
-    localStorage.setItem('wayground_custom_quizzes', JSON.stringify(customOnly));
+    // 2. Remove immediately from state
+    setQuizSets((prev) => prev.filter((q) => q.id !== id));
+
+    // 3. Remove from custom quizzes in localStorage
+    const localCustom = localStorage.getItem('wayground_custom_quizzes');
+    if (localCustom) {
+      try {
+        const parsed = JSON.parse(localCustom);
+        if (Array.isArray(parsed)) {
+          const filtered = parsed.filter((q: any) => q.id !== id);
+          localStorage.setItem('wayground_custom_quizzes', JSON.stringify(filtered));
+        }
+      } catch (e) {}
+    }
+
+    // 4. Delete on server backend
     deleteServerQuiz(id);
     sounds.playClick();
   };
