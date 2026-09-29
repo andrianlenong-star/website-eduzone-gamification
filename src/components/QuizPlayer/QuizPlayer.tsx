@@ -60,16 +60,30 @@ export const QuizPlayer: React.FC<Props> = ({
 
   const timerRef = useRef<any>(null);
   const currentQuestion: Question | undefined = quizSet.questions[currentIndex];
+  const currentRecord = currentQuestion
+    ? records.find((r) => r.questionId === currentQuestion.id)
+    : undefined;
 
-  // Reset question state when moving to next question
+  // Restore or reset question state when moving between questions
   useEffect(() => {
-    setTimeLeft(QUESTION_TIME_SECONDS);
-    setSelectedAnswer(null);
-    setIsAnswerSubmitted(false);
-    setIsFrozen(false);
-    setIsHintVisible(false);
-    setEliminatedOptions([]);
-  }, [currentIndex]);
+    if (!currentQuestion) return;
+    const existing = records.find((r) => r.questionId === currentQuestion.id);
+    if (existing) {
+      setSelectedAnswer(existing.userAnswer);
+      setIsAnswerSubmitted(true);
+      setTimeLeft(0);
+      setIsFrozen(false);
+      setIsHintVisible(false);
+      setEliminatedOptions([]);
+    } else {
+      setTimeLeft(QUESTION_TIME_SECONDS);
+      setSelectedAnswer(null);
+      setIsAnswerSubmitted(false);
+      setIsFrozen(false);
+      setIsHintVisible(false);
+      setEliminatedOptions([]);
+    }
+  }, [currentIndex, currentQuestion?.id]);
 
   // Timer countdown
   useEffect(() => {
@@ -97,10 +111,27 @@ export const QuizPlayer: React.FC<Props> = ({
     submitEvaluation('(Waktu Habis)', false, 0);
   };
 
-  // Keyboard shortcuts (1,2,3,4 or B/S for Benar/Salah, Space/Enter for Next)
+  // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (quizFinished) return;
+
+      // Don't intercept when user is typing in input or textarea
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' && currentIndex > 0) {
+        e.preventDefault();
+        handlePrevQuestion();
+        return;
+      }
+
+      if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNextQuestion();
+        return;
+      }
 
       if (isAnswerSubmitted && (e.key === 'Enter' || e.code === 'Space')) {
         e.preventDefault();
@@ -160,32 +191,38 @@ export const QuizPlayer: React.FC<Props> = ({
         sounds.playSuccess();
       }
 
-      setRecords((prev) => [
-        ...prev,
-        {
-          questionId: currentQuestion.id,
-          question: currentQuestion,
-          userAnswer: userAns,
-          isCorrect: true,
-          timeSpentSeconds: timeSpent,
-          pointsEarned: earned,
-        },
-      ]);
+      setRecords((prev) => {
+        const filtered = prev.filter((r) => r.questionId !== currentQuestion.id);
+        return [
+          ...filtered,
+          {
+            questionId: currentQuestion.id,
+            question: currentQuestion,
+            userAnswer: userAns,
+            isCorrect: true,
+            timeSpentSeconds: timeSpent,
+            pointsEarned: earned,
+          },
+        ];
+      });
     } else {
       setStreak(0);
       sounds.playError();
 
-      setRecords((prev) => [
-        ...prev,
-        {
-          questionId: currentQuestion.id,
-          question: currentQuestion,
-          userAnswer: userAns,
-          isCorrect: false,
-          timeSpentSeconds: timeSpent,
-          pointsEarned: 0,
-        },
-      ]);
+      setRecords((prev) => {
+        const filtered = prev.filter((r) => r.questionId !== currentQuestion.id);
+        return [
+          ...filtered,
+          {
+            questionId: currentQuestion.id,
+            question: currentQuestion,
+            userAnswer: userAns,
+            isCorrect: false,
+            timeSpentSeconds: timeSpent,
+            pointsEarned: 0,
+          },
+        ];
+      });
     }
   };
 
@@ -227,11 +264,38 @@ export const QuizPlayer: React.FC<Props> = ({
     submitEvaluation(ans, isCorrect, timeSpent);
   };
 
+  const handlePrevQuestion = () => {
+    sounds.playClick();
+    if (currentIndex > 0) {
+      setCurrentIndex((prev) => prev - 1);
+    }
+  };
+
   const handleNextQuestion = () => {
     sounds.playClick();
     if (currentIndex < quizSet.questions.length - 1) {
       setCurrentIndex((prev) => prev + 1);
     } else {
+      // Last question - ensure unanswered questions are recorded as skipped
+      const answeredIds = new Set(records.map((r) => r.questionId));
+      const missingRecords: AnswerRecord[] = [];
+      quizSet.questions.forEach((q) => {
+        if (!answeredIds.has(q.id)) {
+          missingRecords.push({
+            questionId: q.id,
+            question: q,
+            userAnswer: '(Dilewati)',
+            isCorrect: false,
+            timeSpentSeconds: 0,
+            pointsEarned: 0,
+          });
+        }
+      });
+
+      if (missingRecords.length > 0) {
+        setRecords((prev) => [...prev, ...missingRecords]);
+      }
+
       setQuizFinished(true);
       if (onEarnReward) {
         const xpEarned = Math.round(totalScore / 10);
@@ -494,72 +558,207 @@ export const QuizPlayer: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Main Question Card */}
-      <div className="relative overflow-hidden bg-slate-900/90 border-2 border-indigo-500/30 rounded-3xl p-5 md:p-8 shadow-2xl backdrop-blur-md">
-        {/* Category & Format Badges */}
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-          <div className="flex items-center gap-2">
-            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-800 text-slate-300 border border-slate-700">
-              {currentQuestion.subject || quizSet.category}
-            </span>
-            <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-800 text-indigo-300 border border-indigo-500/40">
-              {currentQuestion.targetClass || quizSet.targetClass || `Kelas ${currentQuestion.grade || quizSet.grade}`}
-            </span>
+      {/* Quick Question Number Strip */}
+      <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-1 no-scrollbar">
+        {quizSet.questions.map((q, idx) => {
+          const rec = records.find((r) => r.questionId === q.id);
+          const isCurrent = idx === currentIndex;
+          return (
+            <button
+              key={q.id}
+              type="button"
+              onClick={() => {
+                sounds.playClick();
+                setCurrentIndex(idx);
+              }}
+              className={`w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center ${
+                isCurrent
+                  ? 'bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-md scale-105'
+                  : rec
+                  ? rec.isCorrect
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
+                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
+                  : 'bg-slate-800/80 text-slate-400 border border-slate-700/60 hover:text-white hover:bg-slate-700'
+              }`}
+              title={`Nomor ${idx + 1}${
+                rec ? (rec.isCorrect ? ' (Benar)' : ' (Salah)') : ' (Belum dijawab)'
+              }`}
+            >
+              {idx + 1}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Main Question Section with Left 'Sebelum' Button and Right Bottom 'Selanjutnya' Button */}
+      <div className="relative flex items-stretch gap-2.5 sm:gap-3">
+        {/* Tombol Sebelum di Sebelah Kiri Soal (Desktop / Layar Menengah & Besar) */}
+        <button
+          type="button"
+          onClick={handlePrevQuestion}
+          disabled={currentIndex === 0}
+          className={`hidden md:flex flex-col items-center justify-center gap-2.5 px-4 rounded-3xl transition-all border shrink-0 group ${
+            currentIndex === 0
+              ? 'opacity-30 bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
+              : 'bg-slate-900/90 hover:bg-slate-800 border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white shadow-xl hover:shadow-indigo-500/20 active:scale-95 cursor-pointer'
+          }`}
+          title={
+            currentIndex === 0
+              ? 'Ini adalah soal pertama'
+              : 'Kembali ke soal sebelumnya (Panah Kiri)'
+          }
+        >
+          <div
+            className={`w-10 h-10 rounded-2xl flex items-center justify-center border transition-all ${
+              currentIndex === 0
+                ? 'bg-slate-800/50 border-slate-700/50 text-slate-600'
+                : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 group-hover:scale-110 group-hover:bg-indigo-500/30 group-hover:text-white'
+            }`}
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </div>
+          <span className="text-[11px] font-black tracking-widest uppercase [writing-mode:vertical-lr] rotate-180">
+            Sebelum
+          </span>
+        </button>
+
+        {/* Main Question Card */}
+        <div className="flex-1 min-w-0 relative overflow-hidden bg-slate-900/90 border-2 border-indigo-500/30 rounded-3xl p-5 md:p-8 shadow-2xl backdrop-blur-md flex flex-col justify-between">
+          <div>
+            {/* Category & Format Badges (with mobile 'Sebelum' button on the left) */}
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+              <div className="flex items-center gap-2">
+                {/* Tombol Sebelum di kiri atas (mudah diakses di mobile / ponsel) */}
+                <button
+                  type="button"
+                  onClick={handlePrevQuestion}
+                  disabled={currentIndex === 0}
+                  className={`md:hidden px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
+                    currentIndex === 0
+                      ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500/50 shadow-sm active:scale-95'
+                  }`}
+                  title={
+                    currentIndex === 0
+                      ? 'Ini adalah soal pertama'
+                      : 'Kembali ke soal sebelumnya'
+                  }
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Sebelum</span>
+                </button>
+
+                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-800 text-slate-300 border border-slate-700">
+                  {currentQuestion.subject || quizSet.category}
+                </span>
+                <span className="hidden sm:inline-block px-3 py-1 rounded-full text-xs font-extrabold bg-slate-800 text-indigo-300 border border-indigo-500/40">
+                  {currentQuestion.targetClass ||
+                    quizSet.targetClass ||
+                    `Kelas ${currentQuestion.grade || quizSet.grade}`}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-400">
+                  {currentIndex + 1} / {quizSet.questions.length}
+                </span>
+                <span
+                  className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${formatConfig.badge}`}
+                >
+                  {formatConfig.label}
+                </span>
+              </div>
+            </div>
+
+            {/* Question Text */}
+            <h2 className="text-xl md:text-3xl font-extrabold text-white text-center my-4 md:my-6 leading-relaxed max-w-3xl mx-auto">
+              {currentQuestion.question}
+            </h2>
+
+            {/* Dynamic Question Body by Type */}
+            <div className="mt-6 md:mt-8">
+              {currentQuestion.type === 'multiple_choice' && (
+                <MultipleChoiceQuestion
+                  question={activeQuestionWithOptions}
+                  selectedAnswer={selectedAnswer}
+                  isAnswerSubmitted={isAnswerSubmitted}
+                  onSelectAnswer={handleSelectAnswer}
+                  disabled={isAnswerSubmitted}
+                />
+              )}
+
+              {currentQuestion.type === 'true_false' && (
+                <TrueFalseQuestion
+                  question={currentQuestion}
+                  selectedAnswer={selectedAnswer}
+                  isAnswerSubmitted={isAnswerSubmitted}
+                  onSelectAnswer={handleSelectAnswer}
+                  disabled={isAnswerSubmitted}
+                />
+              )}
+
+              {currentQuestion.type === 'fill_blank' && (
+                <FillBlankQuestion
+                  question={currentQuestion}
+                  selectedAnswer={selectedAnswer}
+                  isAnswerSubmitted={isAnswerSubmitted}
+                  onSubmitAnswer={handleSelectAnswer}
+                  disabled={isAnswerSubmitted}
+                />
+              )}
+
+              {currentQuestion.type === 'matching' && (
+                <MatchingQuestion
+                  question={currentQuestion}
+                  selectedAnswer={selectedAnswer}
+                  isAnswerSubmitted={isAnswerSubmitted}
+                  onSubmitAnswer={handleSelectAnswer}
+                  disabled={isAnswerSubmitted}
+                />
+              )}
+            </div>
           </div>
 
-          <span
-            className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${formatConfig.badge}`}
-          >
-            {formatConfig.label}
-          </span>
-        </div>
+          {/* Bottom Navigation Bar: 'Sebelum' di kiri & 'Selanjutnya' di sebelah kanan bawah soal */}
+          <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={handlePrevQuestion}
+              disabled={currentIndex === 0}
+              className={`px-4 py-2.5 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer ${
+                currentIndex === 0
+                  ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500/50 shadow-md active:scale-95'
+              }`}
+              title={
+                currentIndex === 0
+                  ? 'Ini adalah soal pertama'
+                  : 'Kembali ke soal sebelumnya'
+              }
+            >
+              <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
+              <span>Sebelum</span>
+            </button>
 
-        {/* Question Text */}
-        <h2 className="text-xl md:text-3xl font-extrabold text-white text-center my-4 md:my-6 leading-relaxed max-w-3xl mx-auto">
-          {currentQuestion.question}
-        </h2>
-
-        {/* Dynamic Question Body by Type */}
-        <div className="mt-6 md:mt-8">
-          {currentQuestion.type === 'multiple_choice' && (
-            <MultipleChoiceQuestion
-              question={activeQuestionWithOptions}
-              selectedAnswer={selectedAnswer}
-              isAnswerSubmitted={isAnswerSubmitted}
-              onSelectAnswer={handleSelectAnswer}
-              disabled={isAnswerSubmitted}
-            />
-          )}
-
-          {currentQuestion.type === 'true_false' && (
-            <TrueFalseQuestion
-              question={currentQuestion}
-              selectedAnswer={selectedAnswer}
-              isAnswerSubmitted={isAnswerSubmitted}
-              onSelectAnswer={handleSelectAnswer}
-              disabled={isAnswerSubmitted}
-            />
-          )}
-
-          {currentQuestion.type === 'fill_blank' && (
-            <FillBlankQuestion
-              question={currentQuestion}
-              selectedAnswer={selectedAnswer}
-              isAnswerSubmitted={isAnswerSubmitted}
-              onSubmitAnswer={handleSelectAnswer}
-              disabled={isAnswerSubmitted}
-            />
-          )}
-
-          {currentQuestion.type === 'matching' && (
-            <MatchingQuestion
-              question={currentQuestion}
-              selectedAnswer={selectedAnswer}
-              isAnswerSubmitted={isAnswerSubmitted}
-              onSubmitAnswer={handleSelectAnswer}
-              disabled={isAnswerSubmitted}
-            />
-          )}
+            {/* Tombol Selanjutnya di sebelah kanan bawah soal */}
+            <button
+              type="button"
+              onClick={handleNextQuestion}
+              className="btn-3d px-6 md:px-8 py-2.5 md:py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold text-xs md:text-sm flex items-center gap-2.5 shadow-xl shadow-indigo-950/60 transition-all cursor-pointer active:scale-95 ml-auto border border-indigo-400/30"
+              title={
+                currentIndex < quizSet.questions.length - 1
+                  ? 'Lanjut ke soal berikutnya (Panah Kanan / Enter)'
+                  : 'Lihat hasil akhir kuis'
+              }
+            >
+              <span>
+                {currentIndex < quizSet.questions.length - 1
+                  ? 'Selanjutnya'
+                  : 'Selesai & Hasil'}
+              </span>
+              <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -568,7 +767,7 @@ export const QuizPlayer: React.FC<Props> = ({
         <div className="p-5 md:p-6 rounded-3xl bg-slate-900 border-2 border-indigo-500/50 shadow-2xl space-y-4 animate-in slide-in-from-bottom-4 duration-200">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              {records[records.length - 1]?.isCorrect ? (
+              {currentRecord?.isCorrect ? (
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
                   <CheckCircle2 className="w-8 h-8 stroke-[2.5]" />
                 </div>
@@ -580,8 +779,8 @@ export const QuizPlayer: React.FC<Props> = ({
 
               <div>
                 <h3 className="text-lg md:text-xl font-black text-white">
-                  {records[records.length - 1]?.isCorrect
-                    ? `Luar Biasa! Jawaban Benar (+${records[records.length - 1]?.pointsEarned} Poin)`
+                  {currentRecord?.isCorrect
+                    ? `Luar Biasa! Jawaban Benar (+${currentRecord?.pointsEarned ?? 0} Poin)`
                     : 'Kurang Tepat, Jangan Menyerah!'}
                 </h3>
                 <p className="text-xs text-slate-400">
@@ -593,18 +792,34 @@ export const QuizPlayer: React.FC<Props> = ({
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={handleNextQuestion}
-              className="btn-3d px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-indigo-950/50 cursor-pointer text-sm md:text-base"
-            >
-              <span>
-                {currentIndex < quizSet.questions.length - 1
-                  ? 'Soal Berikutnya'
-                  : 'Lihat Hasil Akhir'}
-              </span>
-              <ArrowRight className="w-5 h-5" />
-            </button>
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={handlePrevQuestion}
+                disabled={currentIndex === 0}
+                className={`px-4 py-3 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-1.5 transition-all ${
+                  currentIndex === 0
+                    ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 cursor-pointer'
+                }`}
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Sebelum</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleNextQuestion}
+                className="btn-3d px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-indigo-950/50 cursor-pointer text-sm md:text-base"
+              >
+                <span>
+                  {currentIndex < quizSet.questions.length - 1
+                    ? 'Selanjutnya'
+                    : 'Lihat Hasil Akhir'}
+                </span>
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </div>
           </div>
 
           {/* Pembahasan Detail */}
