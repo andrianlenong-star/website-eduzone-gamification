@@ -190,6 +190,25 @@ class SoundManager {
     } catch (e) {}
   }
 
+  public playCountdownBeep(isFinal: boolean = false) {
+    if (!this.enabled) return;
+    try {
+      this.initCtx();
+      if (!this.ctx) return;
+      const now = this.ctx.currentTime;
+      const osc = this.ctx.createOscillator();
+      const gain = this.ctx.createGain();
+      osc.type = isFinal ? 'triangle' : 'sine';
+      osc.frequency.setValueAtTime(isFinal ? 880 : 523.25, now);
+      gain.gain.setValueAtTime(0.35 * this.volume, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (isFinal ? 0.4 : 0.18));
+      osc.connect(gain);
+      gain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + (isFinal ? 0.4 : 0.18));
+    } catch (e) {}
+  }
+
   public playWin() {
     if (!this.enabled) return;
     try {

@@ -5,6 +5,9 @@ import { TrueFalseQuestion } from './TrueFalseQuestion';
 import { FillBlankQuestion } from './FillBlankQuestion';
 import { MatchingQuestion } from './MatchingQuestion';
 import { QuizResult } from './QuizResult';
+import { WaygroundLobby } from './WaygroundLobby';
+import { WaygroundFeedbackOverlay } from './WaygroundFeedbackOverlay';
+import { WaygroundRedemptionRound } from './WaygroundRedemptionRound';
 import { sounds } from '../../utils/audio';
 import {
   Timer,
@@ -22,6 +25,11 @@ import {
   KeyRound,
   Eye,
   X,
+  Shield,
+  Award,
+  Crown,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 
 interface Props {
@@ -43,6 +51,17 @@ export const QuizPlayer: React.FC<Props> = ({
   timerEnabled = true,
   onToggleTimer,
 }) => {
+  // Game Flow Stage: lobby -> countdown -> playing -> redemption -> result
+  const [gameStage, setGameStage] = useState<'lobby' | 'countdown' | 'playing' | 'redemption' | 'result'>('lobby');
+  const [countdownValue, setCountdownValue] = useState<number | string>(3);
+
+  // Player Wayground Identity
+  const [playerName, setPlayerName] = useState('Bintang Juara');
+  const [playerAvatar, setPlayerAvatar] = useState('🚀');
+  const [showMemes, setShowMemes] = useState(true);
+  const [currentRank, setCurrentRank] = useState(3); // Simulated live rank in class (3 -> 2 -> 1)
+
+  // Quiz Progress
   const [currentIndex, setCurrentIndex] = useState(0);
   const [timeLeft, setTimeLeft] = useState(QUESTION_TIME_SECONDS);
   const [isFrozen, setIsFrozen] = useState(false);
@@ -52,16 +71,30 @@ export const QuizPlayer: React.FC<Props> = ({
   const [streak, setStreak] = useState(0);
   const [maxStreak, setMaxStreak] = useState(0);
   const [totalScore, setTotalScore] = useState(0);
-  const [quizFinished, setQuizFinished] = useState(false);
 
-  // Powerups states (1 use per quiz)
+  // Powerups states
   const [used5050, setUsed5050] = useState(false);
   const [usedFreeze, setUsedFreeze] = useState(false);
   const [usedHint, setUsedHint] = useState(false);
   const [isHintVisible, setIsHintVisible] = useState(false);
   const [eliminatedOptions, setEliminatedOptions] = useState<string[]>([]);
+  const [usedShield, setUsedShield] = useState(false);
+  const [hasShieldActive, setHasShieldActive] = useState(false);
+
   // Modal "Buka Jawaban" ala Wayground
   const [isRevealModalOpen, setIsRevealModalOpen] = useState(false);
+
+  // Instant Feedback Overlay state
+  const [feedbackOverlay, setFeedbackOverlay] = useState<{
+    isCorrect: boolean;
+    question: Question;
+    userAnswer: string;
+    pointsEarned: number;
+    speedBonus: number;
+  } | null>(null);
+
+  // Redemption Round tracker
+  const [redemptionDone, setRedemptionDone] = useState(false);
 
   const timerRef = useRef<any>(null);
   const currentQuestion: Question | undefined = quizSet.questions[currentIndex];
@@ -69,9 +102,45 @@ export const QuizPlayer: React.FC<Props> = ({
     ? records.find((r) => r.questionId === currentQuestion.id)
     : undefined;
 
+  // Start from Lobby handler
+  const handleStartFromLobby = (settings: {
+    nickname: string;
+    avatar: string;
+    showMemes: boolean;
+    timerEnabled: boolean;
+  }) => {
+    setPlayerName(settings.nickname);
+    setPlayerAvatar(settings.avatar);
+    setShowMemes(settings.showMemes);
+    setGameStage('countdown');
+    setCountdownValue(3);
+    sounds.playCountdownBeep(false);
+
+    // 3... 2... 1... GO! sequence
+    setTimeout(() => {
+      setCountdownValue(2);
+      sounds.playCountdownBeep(false);
+    }, 900);
+
+    setTimeout(() => {
+      setCountdownValue(1);
+      sounds.playCountdownBeep(false);
+    }, 1800);
+
+    setTimeout(() => {
+      setCountdownValue('GO!');
+      sounds.playCountdownBeep(true);
+    }, 2700);
+
+    setTimeout(() => {
+      setGameStage('playing');
+    }, 3400);
+  };
+
   // Restore or reset question state when moving between questions
   useEffect(() => {
     setIsRevealModalOpen(false);
+    setFeedbackOverlay(null);
     if (!currentQuestion) return;
     const existing = records.find((r) => r.questionId === currentQuestion.id);
     if (existing) {
@@ -93,7 +162,7 @@ export const QuizPlayer: React.FC<Props> = ({
 
   // Timer countdown
   useEffect(() => {
-    if (!timerEnabled || quizFinished || isAnswerSubmitted || isFrozen) return;
+    if (!timerEnabled || gameStage !== 'playing' || isAnswerSubmitted || isFrozen) return;
 
     timerRef.current = setInterval(() => {
       setTimeLeft((prev) => {
@@ -110,17 +179,17 @@ export const QuizPlayer: React.FC<Props> = ({
     }, 1000);
 
     return () => clearInterval(timerRef.current);
-  }, [currentIndex, isAnswerSubmitted, isFrozen, quizFinished, timerEnabled]);
+  }, [currentIndex, isAnswerSubmitted, isFrozen, gameStage, timerEnabled]);
 
   const handleTimeExpired = () => {
     if (isAnswerSubmitted) return;
     submitEvaluation('(Waktu Habis)', false, 0);
   };
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts in play mode
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (quizFinished) return;
+      if (gameStage !== 'playing') return;
 
       // Don't intercept when user is typing in input or textarea
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -166,7 +235,7 @@ export const QuizPlayer: React.FC<Props> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, isAnswerSubmitted, quizFinished, currentQuestion, eliminatedOptions]);
+  }, [currentIndex, isAnswerSubmitted, gameStage, currentQuestion, eliminatedOptions]);
 
   // Evaluate Answer
   const submitEvaluation = (userAns: string, isCorrect: boolean, timeSpent: number) => {
@@ -175,6 +244,9 @@ export const QuizPlayer: React.FC<Props> = ({
 
     let multiplier = 1;
     let newStreak = streak;
+
+    const basePoints = 1000;
+    const speedBonus = timerEnabled ? Math.round(timeLeft * 30) : 350;
 
     if (isCorrect) {
       newStreak = streak + 1;
@@ -185,11 +257,11 @@ export const QuizPlayer: React.FC<Props> = ({
       else if (newStreak >= 3) multiplier = 2;
       else if (newStreak >= 2) multiplier = 1.5;
 
-      const basePoints = 1000;
-      const speedBonus = timerEnabled ? Math.round(timeLeft * 30) : 350;
       const earned = Math.round((basePoints + speedBonus) * multiplier);
-
       setTotalScore((prev) => prev + earned);
+
+      // Rank advances when answering correctly and fast!
+      setCurrentRank((prev) => Math.max(1, prev - 1));
 
       if (newStreak >= 3) {
         sounds.playStreak();
@@ -198,12 +270,12 @@ export const QuizPlayer: React.FC<Props> = ({
       }
 
       setRecords((prev) => {
-        const filtered = prev.filter((r) => r.questionId !== currentQuestion.id);
+        const filtered = prev.filter((r) => r.questionId !== currentQuestion?.id);
         return [
           ...filtered,
           {
-            questionId: currentQuestion.id,
-            question: currentQuestion,
+            questionId: currentQuestion!.id,
+            question: currentQuestion!,
             userAnswer: userAns,
             isCorrect: true,
             timeSpentSeconds: timeSpent,
@@ -211,17 +283,35 @@ export const QuizPlayer: React.FC<Props> = ({
           },
         ];
       });
+
+      if (showMemes && currentQuestion) {
+        setFeedbackOverlay({
+          isCorrect: true,
+          question: currentQuestion,
+          userAnswer: userAns,
+          pointsEarned: earned,
+          speedBonus,
+        });
+      }
     } else {
-      setStreak(0);
+      if (hasShieldActive) {
+        // Shield protected the streak!
+        setHasShieldActive(false);
+        sounds.playPowerup();
+      } else {
+        setStreak(0);
+        setCurrentRank((prev) => Math.min(5, prev + 1));
+      }
+
       sounds.playError();
 
       setRecords((prev) => {
-        const filtered = prev.filter((r) => r.questionId !== currentQuestion.id);
+        const filtered = prev.filter((r) => r.questionId !== currentQuestion?.id);
         return [
           ...filtered,
           {
-            questionId: currentQuestion.id,
-            question: currentQuestion,
+            questionId: currentQuestion!.id,
+            question: currentQuestion!,
             userAnswer: userAns,
             isCorrect: false,
             timeSpentSeconds: timeSpent,
@@ -229,6 +319,16 @@ export const QuizPlayer: React.FC<Props> = ({
           },
         ];
       });
+
+      if (showMemes && currentQuestion) {
+        setFeedbackOverlay({
+          isCorrect: false,
+          question: currentQuestion,
+          userAnswer: userAns,
+          pointsEarned: 0,
+          speedBonus: 0,
+        });
+      }
     }
   };
 
@@ -254,7 +354,6 @@ export const QuizPlayer: React.FC<Props> = ({
       acceptable.push(currentQuestion.correctAnswer.trim().toLowerCase());
       isCorrect = acceptable.includes(cleanUser);
     } else if (currentQuestion.type === 'matching') {
-      // Matching summary grading
       const pairs = currentQuestion.matchingPairs || [];
       const parts = ans.split('; ');
       let correctMatches = 0;
@@ -309,10 +408,12 @@ export const QuizPlayer: React.FC<Props> = ({
 
   const handleNextQuestion = () => {
     sounds.playClick();
+    setFeedbackOverlay(null);
+
     if (currentIndex < quizSet.questions.length - 1) {
       setCurrentIndex((prev) => prev + 1);
     } else {
-      // Last question - ensure unanswered questions are recorded as skipped
+      // Last question reached
       const answeredIds = new Set(records.map((r) => r.questionId));
       const missingRecords: AnswerRecord[] = [];
       quizSet.questions.forEach((q) => {
@@ -320,7 +421,7 @@ export const QuizPlayer: React.FC<Props> = ({
           missingRecords.push({
             questionId: q.id,
             question: q,
-            userAnswer: '(Dilewati)',
+            userAnswer: '(Tidak dijawab)',
             isCorrect: false,
             timeSpentSeconds: 0,
             pointsEarned: 0,
@@ -328,38 +429,55 @@ export const QuizPlayer: React.FC<Props> = ({
         }
       });
 
-      if (missingRecords.length > 0) {
-        setRecords((prev) => [...prev, ...missingRecords]);
+      const finalRecords = [...records, ...missingRecords];
+      setRecords(finalRecords);
+
+      // Check if redemption round can be offered (Wayground classic mechanic)
+      const missed = finalRecords.filter((r) => !r.isCorrect);
+      if (missed.length > 0 && !redemptionDone) {
+        setGameStage('redemption');
+        return;
       }
 
-      setQuizFinished(true);
-      if (onEarnReward) {
-        const xpEarned = Math.round(totalScore / 10);
-        const coinsEarned = Math.round(totalScore / 50);
-        onEarnReward(xpEarned, coinsEarned);
-      }
+      finishQuiz(finalRecords);
     }
   };
 
-  // Powerups logic
-  const handleUse5050 = () => {
-    if (used5050 || isAnswerSubmitted || currentQuestion?.type !== 'multiple_choice') return;
-    setUsed5050(true);
-    sounds.playClick();
+  const finishQuiz = (finalRecords: AnswerRecord[]) => {
+    setGameStage('result');
 
+    const totalEarned = finalRecords.reduce((acc, r) => acc + (r.pointsEarned || 0), 0);
+    const correctCount = finalRecords.filter((r) => r.isCorrect).length;
+    const coinsEarned = Math.round(correctCount * 15);
+    const xpEarned = Math.round(totalEarned / 10);
+
+    if (onEarnReward) {
+      onEarnReward(xpEarned, coinsEarned);
+    }
+  };
+
+  // Power-up handlers
+  const handleUse5050 = () => {
+    if (used5050 || isAnswerSubmitted || !currentQuestion || currentQuestion.type !== 'multiple_choice') return;
     const options = currentQuestion.options || [];
     const correct = currentQuestion.correctAnswer;
-    const wrongs = options.filter((o) => o !== correct);
-    const shuffledWrongs = [...wrongs].sort(() => Math.random() - 0.5);
-    const toEliminate = shuffledWrongs.slice(0, 2);
+    const incorrect = options.filter((opt) => opt !== correct);
+
+    // Shuffle and pick 2 incorrect options to eliminate
+    const shuffled = [...incorrect].sort(() => 0.5 - Math.random());
+    const toEliminate = shuffled.slice(0, 2);
+
     setEliminatedOptions(toEliminate);
+    setUsed5050(true);
+    sounds.playPowerup();
   };
 
   const handleUseFreeze = () => {
-    if (usedFreeze || isAnswerSubmitted) return;
-    setUsedFreeze(true);
+    if (usedFreeze || isAnswerSubmitted || !timerEnabled) return;
     setIsFrozen(true);
-    sounds.playClick();
+    setUsedFreeze(true);
+    sounds.playPowerup();
+
     setTimeout(() => {
       setIsFrozen(false);
     }, 10000);
@@ -367,28 +485,99 @@ export const QuizPlayer: React.FC<Props> = ({
 
   const handleUseHint = () => {
     if (usedHint || isAnswerSubmitted) return;
-    setUsedHint(true);
     setIsHintVisible(true);
-    sounds.playClick();
+    setUsedHint(true);
+    sounds.playPowerup();
   };
 
-  if (quizFinished) {
+  const handleUseShield = () => {
+    if (usedShield || isAnswerSubmitted) return;
+    setUsedShield(true);
+    setHasShieldActive(true);
+    sounds.playPowerup();
+  };
+
+  // 1. STAGE: LOBBY
+  if (gameStage === 'lobby') {
+    return (
+      <WaygroundLobby
+        quizSet={quizSet}
+        onStartGame={handleStartFromLobby}
+        onBack={onBack}
+        timerEnabled={timerEnabled}
+        onToggleTimer={onToggleTimer}
+        soundEnabled={sounds.isEnabled()}
+        onToggleSound={() => sounds.toggle()}
+      />
+    );
+  }
+
+  // 2. STAGE: COUNTDOWN (3... 2... 1... GO!)
+  if (gameStage === 'countdown') {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 backdrop-blur-md select-none">
+        <div className="text-center space-y-4 animate-in zoom-in-50 duration-300">
+          <div className="text-8xl sm:text-9xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-pink-500 to-indigo-500 tracking-tighter drop-shadow-[0_10px_20px_rgba(236,72,153,0.5)] animate-pulse">
+            {countdownValue}
+          </div>
+          <p className="text-base sm:text-xl font-black text-indigo-300 uppercase tracking-widest">
+            {countdownValue === 'GO!' ? 'SEMANGAT MENJAWAB!' : 'BERSIAPLAH!'}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // 3. STAGE: REDEMPTION ROUND
+  if (gameStage === 'redemption') {
+    const missed = records.filter((r) => !r.isCorrect);
+    return (
+      <WaygroundRedemptionRound
+        missedRecords={missed}
+        onCompleteRedemption={(redeemed) => {
+          setRedemptionDone(true);
+          if (redeemed) {
+            const updatedRecords = records.map((r) =>
+              r.questionId === redeemed.questionId ? redeemed : r
+            );
+            setRecords(updatedRecords);
+            setTotalScore((prev) => prev + redeemed.pointsEarned);
+            finishQuiz(updatedRecords);
+          } else {
+            finishQuiz(records);
+          }
+        }}
+        onSkipRedemption={() => {
+          setRedemptionDone(true);
+          finishQuiz(records);
+        }}
+      />
+    );
+  }
+
+  // 4. STAGE: RESULT (Podium & Analysis)
+  if (gameStage === 'result') {
     return (
       <QuizResult
         quizSet={quizSet}
         records={records}
         totalScore={totalScore}
         maxStreak={maxStreak}
+        playerName={playerName}
+        playerAvatar={playerAvatar}
         onRestart={() => {
           setCurrentIndex(0);
           setRecords([]);
           setStreak(0);
           setMaxStreak(0);
           setTotalScore(0);
-          setQuizFinished(false);
           setUsed5050(false);
           setUsedFreeze(false);
           setUsedHint(false);
+          setUsedShield(false);
+          setHasShieldActive(false);
+          setRedemptionDone(false);
+          setGameStage('lobby');
         }}
         onBack={onBack}
         onOpenWorksheet={() => onOpenWorksheet(quizSet)}
@@ -396,106 +585,85 @@ export const QuizPlayer: React.FC<Props> = ({
     );
   }
 
-  if (!currentQuestion) {
-    return <div>Soal tidak tersedia</div>;
-  }
+  // 5. STAGE: PLAYING (The Game Arena)
+  if (!currentQuestion) return null;
 
-  const formatConfig = {
-    multiple_choice: {
-      label: 'Pilihan Ganda',
-      badge: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    },
-    true_false: {
-      label: 'Benar / Salah',
-      badge: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    },
-    fill_blank: {
-      label: 'Isian Singkat',
-      badge: 'bg-violet-500/20 text-violet-300 border-violet-500/30',
-    },
-    matching: {
-      label: 'Menjodohkan',
-      badge: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-    },
-  }[currentQuestion.type];
-
-  // Filter options if 50:50 power-up was used
-  const activeQuestionWithOptions: Question = {
-    ...currentQuestion,
-    options: (currentQuestion.options || []).map((opt) =>
-      eliminatedOptions.includes(opt) ? '(Telah dieliminasi 50:50)' : opt
-    ),
-  };
-
-  const progressPercent = ((currentIndex + 1) / quizSet.questions.length) * 100;
   const timerPercent = (timeLeft / QUESTION_TIME_SECONDS) * 100;
+  const progressPercent = ((currentIndex + (isAnswerSubmitted ? 1 : 0)) / quizSet.questions.length) * 100;
 
   return (
-    <div className="w-full max-w-5xl mx-auto py-3 md:py-6 px-3 sm:px-4 space-y-4">
-      {/* Top Bar Navigation & HUD */}
-      <div className="flex items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 p-3.5 rounded-2xl shadow-xl backdrop-blur-sm">
-        <button
-          type="button"
-          onClick={onBack}
-          className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors cursor-pointer"
-          title="Keluar ke Menu"
-        >
-          <ArrowLeft className="w-5 h-5" />
-        </button>
+    <div className="w-full max-w-4xl mx-auto py-3 px-4 space-y-4 animate-in fade-in duration-200">
+      {/* Wayground Full-Width Top Progress Bar */}
+      <div className="fixed top-0 left-0 right-0 z-50 h-2 bg-slate-900 border-b border-indigo-500/20">
+        <div
+          className="h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all duration-300 shadow-sm shadow-pink-500/50"
+          style={{ width: `${progressPercent}%` }}
+        />
+      </div>
 
-        {/* Progress Tracker */}
-        <div className="flex-1 max-w-md mx-2">
-          <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-1.5">
-            <span className="truncate pr-2">{quizSet.title}</span>
-            <span className="shrink-0 text-indigo-400">
-              Soal {currentIndex + 1} / {quizSet.questions.length}
-            </span>
+      {/* Wayground Top Header: Rank, Streak Flame, Live Score */}
+      <div className="flex items-center justify-between gap-3 p-3.5 sm:p-4 rounded-2xl bg-slate-900/95 border-2 border-indigo-500/30 shadow-xl backdrop-blur-md">
+        {/* Left: Player Info & Simulated Live Rank */}
+        <div className="flex items-center gap-2.5">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 flex items-center justify-center text-xl shadow-md border border-indigo-400/40">
+            {playerAvatar}
           </div>
-          <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700/60">
-            <div
-              className="h-full bg-gradient-to-r from-indigo-500 via-sky-500 to-emerald-500 rounded-full transition-all duration-300"
-              style={{ width: `${progressPercent}%` }}
-            />
+
+          <div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs sm:text-sm font-black text-white max-w-[120px] truncate">
+                {playerName}
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1">
+                <Crown className="w-3 h-3 text-amber-400" />
+                <span>#{currentRank}</span>
+              </span>
+            </div>
+            <span className="text-[11px] font-bold text-slate-400 block">
+              Soal {currentIndex + 1} dari {quizSet.questions.length}
+            </span>
           </div>
         </div>
 
-        {/* Streak & Score Indicators */}
-        <div className="flex items-center gap-2.5">
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-300 font-extrabold text-sm">
-            <Flame
-              className={`w-4 h-4 text-amber-400 ${
-                streak >= 2 ? 'animate-bounce text-orange-400' : ''
-              }`}
-            />
-            <span>{streak}x</span>
-          </div>
+        {/* Center: Streak Flame Multiplier */}
+        <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800/90 border border-amber-500/30 text-amber-300 font-black text-xs sm:text-sm shadow-inner">
+          <Flame className={`w-4 h-4 text-amber-400 ${streak >= 2 ? 'animate-bounce text-orange-400' : ''}`} />
+          <span>Streak x{Math.max(1, streak)}</span>
+        </div>
 
-          <div className="px-3.5 py-1 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 font-black text-sm md:text-base">
-            {totalScore.toLocaleString('id-ID')}
+        {/* Right: Live Score */}
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
+              SKOR
+            </span>
+            <span className="text-base sm:text-xl font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-yellow-200">
+              {totalScore.toLocaleString('id-ID')}
+            </span>
           </div>
         </div>
       </div>
 
-      {/* Timer & Power-ups Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        {/* Animated Timer Pill / Untimed Mode */}
+      {/* Timer & Power-ups Toolbar */}
+      <div className="flex flex-wrap items-center justify-between gap-2.5 px-1">
+        {/* Timer Bar or Untimed Mode */}
         <div className="flex items-center gap-2 flex-1 max-w-sm">
           {timerEnabled ? (
             <>
               <div
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full font-mono font-bold text-sm border transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl font-mono font-black text-xs border transition-all ${
                   isFrozen
                     ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 animate-pulse'
                     : timeLeft <= 5
                     ? 'bg-rose-500/20 border-rose-500 text-rose-300 animate-pulse'
-                    : 'bg-slate-800/80 border-slate-700 text-slate-200'
+                    : 'bg-slate-800/90 border-slate-700 text-slate-200'
                 }`}
               >
-                <Timer className="w-4 h-4 shrink-0 text-amber-400" />
-                <span>{isFrozen ? 'BEKU (10s)' : `${timeLeft}s`}</span>
+                <Timer className="w-3.5 h-3.5 text-amber-400" />
+                <span>{isFrozen ? 'BEKU 10s' : `${timeLeft}s`}</span>
               </div>
 
-              <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden hidden sm:block">
+              <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden hidden sm:block border border-slate-700">
                 <div
                   className={`h-full transition-all duration-1000 ${
                     timeLeft <= 5 ? 'bg-rose-500' : 'bg-cyan-500'
@@ -505,52 +673,22 @@ export const QuizPlayer: React.FC<Props> = ({
               </div>
             </>
           ) : (
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold text-xs shadow-sm">
-              <TimerOff className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span>Bebas Waktu (Santai)</span>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 font-bold text-xs">
+              <TimerOff className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Santai (Tanpa Timer)</span>
             </div>
-          )}
-
-          {/* Quick Toggle Button directly in game */}
-          {onToggleTimer && (
-            <button
-              type="button"
-              onClick={onToggleTimer}
-              className={`px-2.5 py-1.5 rounded-xl border text-[11px] font-extrabold transition-all cursor-pointer flex items-center gap-1.5 ${
-                timerEnabled
-                  ? 'bg-slate-800/90 border-slate-700 text-slate-400 hover:text-amber-300 hover:border-amber-500/40'
-                  : 'bg-emerald-950/40 border-emerald-500/40 text-emerald-300 hover:bg-emerald-900/40'
-              }`}
-              title={
-                timerEnabled
-                  ? 'Klik untuk Matikan Timer (Mode Santai tanpa batas waktu)'
-                  : 'Klik untuk Nyalakan Timer (Mode Hitungan Mundur 25s)'
-              }
-            >
-              {timerEnabled ? (
-                <>
-                  <TimerOff className="w-3.5 h-3.5 text-slate-400" />
-                  <span className="hidden md:inline">Matikan Timer</span>
-                </>
-              ) : (
-                <>
-                  <Timer className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="hidden md:inline">Nyalakan Timer</span>
-                </>
-              )}
-            </button>
           )}
         </div>
 
         {/* Powerups Buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {currentQuestion.type === 'multiple_choice' && (
             <button
               type="button"
               disabled={used5050 || isAnswerSubmitted}
               onClick={handleUse5050}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-amber-300 border border-amber-500/30 flex items-center gap-1 transition-all cursor-pointer"
-              title="Gunakan 50:50 untuk mengeliminasi 2 jawaban salah"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-amber-300 border border-amber-500/30 flex items-center gap-1 transition-all cursor-pointer"
+              title="50:50 (Eliminasi 2 Opsi Salah)"
             >
               <Zap className="w-3.5 h-3.5 text-amber-400" />
               <span>50:50</span>
@@ -562,8 +700,8 @@ export const QuizPlayer: React.FC<Props> = ({
               type="button"
               disabled={usedFreeze || isAnswerSubmitted}
               onClick={handleUseFreeze}
-              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-cyan-300 border border-cyan-500/30 flex items-center gap-1 transition-all cursor-pointer"
-              title="Bekukan waktu selama 10 detik"
+              className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-cyan-300 border border-cyan-500/30 flex items-center gap-1 transition-all cursor-pointer"
+              title="Bekukan Timer 10 Detik"
             >
               <Snowflake className="w-3.5 h-3.5 text-cyan-400" />
               <span>Bekukan</span>
@@ -574,519 +712,293 @@ export const QuizPlayer: React.FC<Props> = ({
             type="button"
             disabled={usedHint || isAnswerSubmitted || isHintVisible}
             onClick={handleUseHint}
-            className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-emerald-300 border border-emerald-500/30 flex items-center gap-1 transition-all cursor-pointer"
-            title="Buka petunjuk bantuan"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-xs font-bold text-emerald-300 border border-emerald-500/30 flex items-center gap-1 transition-all cursor-pointer"
+            title="Buka Petunjuk Bantuan"
           >
             <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />
             <span>Petunjuk</span>
+          </button>
+
+          {/* Immunity Shield Powerup */}
+          <button
+            type="button"
+            disabled={usedShield || isAnswerSubmitted}
+            onClick={handleUseShield}
+            className={`px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1 transition-all cursor-pointer ${
+              hasShieldActive
+                ? 'bg-purple-600 text-white border-purple-400 animate-pulse'
+                : 'bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-purple-300 border-purple-500/30'
+            }`}
+            title="Perisai Kebal (Melindungi streak jika 1 kali salah)"
+          >
+            <Shield className="w-3.5 h-3.5 text-purple-400" />
+            <span>Perisai</span>
           </button>
 
           {/* Tombol Buka Jawaban ala Wayground */}
           <button
             type="button"
             onClick={handleRevealAnswer}
-            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-amber-500/20 hover:from-amber-500/30 hover:via-emerald-500/30 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 hover:border-emerald-400 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95"
-            title="Buka Kunci Jawaban & Pembahasan (seperti Wayground)"
+            className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-amber-500/20 hover:from-amber-500/30 hover:via-emerald-500/30 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 hover:border-emerald-400 text-xs font-black flex items-center gap-1 transition-all cursor-pointer shadow-md active:scale-95"
+            title="Buka Kunci Jawaban & Pembahasan Lengkap (Wayground Mode)"
           >
             <KeyRound className="w-3.5 h-3.5 text-amber-400" />
-            <span>Buka Jawaban</span>
+            <span>Buka Kunci</span>
           </button>
         </div>
       </div>
 
       {/* Hint Alert if Active */}
       {isHintVisible && (
-        <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-sm flex items-start gap-2.5 animate-in fade-in duration-200">
+        <div className="p-3.5 rounded-2xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs sm:text-sm flex items-start gap-2.5 animate-in fade-in duration-200">
           <Lightbulb className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <strong className="block text-amber-300 font-bold mb-0.5">Petunjuk:</strong>
-            <p>{currentQuestion.hint}</p>
+            <strong className="text-amber-300 font-bold block mb-0.5">Petunjuk Soal:</strong>
+            <p>{currentQuestion.hint || 'Perhatikan materi dan konsep kunci yang ditanyakan pada soal ini.'}</p>
           </div>
         </div>
       )}
 
-      {/* Quick Question Number Strip */}
-      <div className="flex items-center gap-1.5 overflow-x-auto py-1 px-1 no-scrollbar">
-        {quizSet.questions.map((q, idx) => {
-          const rec = records.find((r) => r.questionId === q.id);
-          const isCurrent = idx === currentIndex;
-          return (
-            <button
-              key={q.id}
-              type="button"
-              onClick={() => {
-                sounds.playClick();
-                setCurrentIndex(idx);
-              }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 shrink-0 rounded-xl text-xs font-black transition-all cursor-pointer flex items-center justify-center ${
-                isCurrent
-                  ? 'bg-indigo-600 text-white ring-2 ring-indigo-400 shadow-md scale-105'
-                  : rec
-                  ? rec.isCorrect
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30'
-                    : 'bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30'
-                  : 'bg-slate-800/80 text-slate-400 border border-slate-700/60 hover:text-white hover:bg-slate-700'
-              }`}
-              title={`Nomor ${idx + 1}${
-                rec ? (rec.isCorrect ? ' (Benar)' : ' (Salah)') : ' (Belum dijawab)'
-              }`}
-            >
-              {idx + 1}
-            </button>
-          );
-        })}
-      </div>
+      {/* Question Card Box */}
+      <div className="relative bg-slate-900 border-2 border-slate-800 rounded-3xl p-5 md:p-8 shadow-2xl flex flex-col justify-between min-h-[340px]">
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] sm:text-xs font-extrabold uppercase tracking-wider text-indigo-400">
+              Pertanyaan #{currentIndex + 1} • {currentQuestion.subject || quizSet.category}
+            </span>
+            <span className="text-xs font-extrabold text-slate-400">
+              {currentQuestion.type === 'multiple_choice' && 'Pilihan Ganda'}
+              {currentQuestion.type === 'true_false' && 'Benar / Salah'}
+              {currentQuestion.type === 'fill_blank' && 'Isian Singkat'}
+              {currentQuestion.type === 'matching' && 'Menjodohkan'}
+            </span>
+          </div>
 
-      {/* Main Question Section with Left 'Sebelum' Button and Right Bottom 'Selanjutnya' Button */}
-      <div className="relative flex items-stretch gap-2.5 sm:gap-3">
-        {/* Tombol Sebelum di Sebelah Kiri Soal (Desktop / Layar Menengah & Besar) */}
-        <button
-          type="button"
-          onClick={handlePrevQuestion}
-          disabled={currentIndex === 0}
-          className={`hidden md:flex flex-col items-center justify-center gap-2.5 px-4 rounded-3xl transition-all border shrink-0 group ${
-            currentIndex === 0
-              ? 'opacity-30 bg-slate-900/40 border-slate-800 text-slate-600 cursor-not-allowed'
-              : 'bg-slate-900/90 hover:bg-slate-800 border-indigo-500/30 hover:border-indigo-400 text-indigo-300 hover:text-white shadow-xl hover:shadow-indigo-500/20 active:scale-95 cursor-pointer'
-          }`}
-          title={
-            currentIndex === 0
-              ? 'Ini adalah soal pertama'
-              : 'Kembali ke soal sebelumnya (Panah Kiri)'
-          }
-        >
-          <div
-            className={`w-10 h-10 rounded-2xl flex items-center justify-center border transition-all ${
-              currentIndex === 0
-                ? 'bg-slate-800/50 border-slate-700/50 text-slate-600'
-                : 'bg-indigo-500/20 border-indigo-500/40 text-indigo-300 group-hover:scale-110 group-hover:bg-indigo-500/30 group-hover:text-white'
-            }`}
+          <h2 className="text-lg sm:text-2xl font-black text-white leading-relaxed">
+            {currentQuestion.question}
+          </h2>
+
+          {/* Interactive Question Input Components (All 4 Types Maintained) */}
+          <div className="pt-2">
+            {currentQuestion.type === 'multiple_choice' && (
+              <MultipleChoiceQuestion
+                question={currentQuestion}
+                selectedAnswer={selectedAnswer}
+                isAnswerSubmitted={isAnswerSubmitted}
+                onSelectAnswer={handleSelectAnswer}
+                disabled={isAnswerSubmitted}
+              />
+            )}
+
+            {currentQuestion.type === 'true_false' && (
+              <TrueFalseQuestion
+                question={currentQuestion}
+                selectedAnswer={selectedAnswer}
+                isAnswerSubmitted={isAnswerSubmitted}
+                onSelectAnswer={handleSelectAnswer}
+                disabled={isAnswerSubmitted}
+              />
+            )}
+
+            {currentQuestion.type === 'fill_blank' && (
+              <FillBlankQuestion
+                question={currentQuestion}
+                selectedAnswer={selectedAnswer}
+                isAnswerSubmitted={isAnswerSubmitted}
+                onSubmitAnswer={handleSelectAnswer}
+                disabled={isAnswerSubmitted}
+              />
+            )}
+
+            {currentQuestion.type === 'matching' && (
+              <MatchingQuestion
+                question={currentQuestion}
+                selectedAnswer={selectedAnswer}
+                isAnswerSubmitted={isAnswerSubmitted}
+                onSubmitAnswer={handleSelectAnswer}
+                disabled={isAnswerSubmitted}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Navigation Bar: 'Buka Jawaban' di kiri, 'Sebelum' di tengah, & 'Selanjutnya' di kanan */}
+        <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-2 sm:gap-3">
+          {/* Tombol Buka Jawaban di kiri */}
+          <button
+            type="button"
+            onClick={handleRevealAnswer}
+            className="px-4 sm:px-5 py-2.5 md:py-3.5 rounded-2xl font-black text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-amber-500/20 hover:from-amber-500/30 hover:via-emerald-500/30 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 hover:border-emerald-400 shadow-lg shadow-amber-950/30 active:scale-95"
+            title="Buka Kunci Jawaban & Pembahasan Lengkap (Wayground Mode)"
           >
-            <ArrowLeft className="w-5 h-5" />
-          </div>
-          <span className="text-[11px] font-black tracking-widest uppercase [writing-mode:vertical-lr] rotate-180">
-            Sebelum
-          </span>
-        </button>
+            <Eye className="w-4 h-4 md:w-5 md:h-5 text-amber-400" />
+            <span>Buka Jawaban</span>
+          </button>
 
-        {/* Main Question Card */}
-        <div className="flex-1 min-w-0 relative overflow-hidden bg-slate-900/90 border-2 border-indigo-500/30 rounded-3xl p-5 md:p-8 shadow-2xl backdrop-blur-md flex flex-col justify-between">
-          <div>
-            {/* Category & Format Badges (with mobile 'Sebelum' button on the left) */}
-            <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-              <div className="flex items-center gap-2">
-                {/* Tombol Sebelum di kiri atas (mudah diakses di mobile / ponsel) */}
-                <button
-                  type="button"
-                  onClick={handlePrevQuestion}
-                  disabled={currentIndex === 0}
-                  className={`md:hidden px-3 py-1.5 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all cursor-pointer ${
-                    currentIndex === 0
-                      ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
-                      : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500/50 shadow-sm active:scale-95'
-                  }`}
-                  title={
-                    currentIndex === 0
-                      ? 'Ini adalah soal pertama'
-                      : 'Kembali ke soal sebelumnya'
-                  }
-                >
-                  <ArrowLeft className="w-3.5 h-3.5" />
-                  <span>Sebelum</span>
-                </button>
+          {/* Tombol Sebelum di tengah */}
+          <button
+            type="button"
+            onClick={handlePrevQuestion}
+            disabled={currentIndex === 0}
+            className={`px-4 sm:px-5 py-2.5 md:py-3.5 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer ${
+              currentIndex === 0
+                ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500/50 shadow-md active:scale-95'
+            }`}
+            title={currentIndex === 0 ? 'Ini soal pertama' : 'Kembali ke soal sebelumnya'}
+          >
+            <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
+            <span>Sebelum</span>
+          </button>
 
-                <span className="px-3 py-1 rounded-full text-xs font-extrabold bg-slate-800 text-slate-300 border border-slate-700">
-                  {currentQuestion.subject || quizSet.category}
-                </span>
-                <span className="hidden sm:inline-block px-3 py-1 rounded-full text-xs font-extrabold bg-slate-800 text-indigo-300 border border-indigo-500/40">
-                  {currentQuestion.targetClass ||
-                    quizSet.targetClass ||
-                    `Kelas ${currentQuestion.grade || quizSet.grade}`}
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">
-                  {currentIndex + 1} / {quizSet.questions.length}
-                </span>
-                <span
-                  className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider border ${formatConfig.badge}`}
-                >
-                  {formatConfig.label}
-                </span>
-              </div>
-            </div>
-
-            {/* Question Text */}
-            <h2 className="text-xl md:text-3xl font-extrabold text-white text-center my-4 md:my-6 leading-relaxed max-w-3xl mx-auto">
-              {currentQuestion.question}
-            </h2>
-
-            {/* Dynamic Question Body by Type */}
-            <div className="mt-6 md:mt-8">
-              {currentQuestion.type === 'multiple_choice' && (
-                <MultipleChoiceQuestion
-                  question={activeQuestionWithOptions}
-                  selectedAnswer={selectedAnswer}
-                  isAnswerSubmitted={isAnswerSubmitted}
-                  onSelectAnswer={handleSelectAnswer}
-                  disabled={isAnswerSubmitted}
-                />
-              )}
-
-              {currentQuestion.type === 'true_false' && (
-                <TrueFalseQuestion
-                  question={currentQuestion}
-                  selectedAnswer={selectedAnswer}
-                  isAnswerSubmitted={isAnswerSubmitted}
-                  onSelectAnswer={handleSelectAnswer}
-                  disabled={isAnswerSubmitted}
-                />
-              )}
-
-              {currentQuestion.type === 'fill_blank' && (
-                <FillBlankQuestion
-                  question={currentQuestion}
-                  selectedAnswer={selectedAnswer}
-                  isAnswerSubmitted={isAnswerSubmitted}
-                  onSubmitAnswer={handleSelectAnswer}
-                  disabled={isAnswerSubmitted}
-                />
-              )}
-
-              {currentQuestion.type === 'matching' && (
-                <MatchingQuestion
-                  question={currentQuestion}
-                  selectedAnswer={selectedAnswer}
-                  isAnswerSubmitted={isAnswerSubmitted}
-                  onSubmitAnswer={handleSelectAnswer}
-                  disabled={isAnswerSubmitted}
-                />
-              )}
-            </div>
-          </div>
-
-          {/* Bottom Navigation Bar: 'Buka Jawaban' di kiri, 'Sebelum' di tengah, & 'Selanjutnya' di kanan */}
-          <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-2 sm:gap-3">
-            {/* Tombol Buka Jawaban ala Wayground di kiri */}
-            <button
-              type="button"
-              onClick={handleRevealAnswer}
-              className="px-4 sm:px-5 py-2.5 md:py-3.5 rounded-2xl font-black text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-amber-500/20 hover:from-amber-500/30 hover:via-emerald-500/30 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 hover:border-emerald-400 shadow-lg shadow-amber-950/30 active:scale-95"
-              title="Buka Kunci Jawaban & Pembahasan Lengkap (seperti Wayground)"
-            >
-              <Eye className="w-4 h-4 md:w-5 md:h-5 text-amber-400" />
-              <span>Buka Jawaban</span>
-            </button>
-
-            {/* Tombol Sebelum di tengah */}
-            <button
-              type="button"
-              onClick={handlePrevQuestion}
-              disabled={currentIndex === 0}
-              className={`px-4 sm:px-5 py-2.5 md:py-3.5 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer ${
-                currentIndex === 0
-                  ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500/50 shadow-md active:scale-95'
-              }`}
-              title={
-                currentIndex === 0
-                  ? 'Ini adalah soal pertama'
-                  : 'Kembali ke soal sebelumnya'
-              }
-            >
-              <ArrowLeft className="w-4 h-4 md:w-5 md:h-5" />
-              <span>Sebelum</span>
-            </button>
-
-            {/* Tombol Selanjutnya di sebelah kanan bawah soal */}
-            <button
-              type="button"
-              onClick={handleNextQuestion}
-              className="btn-3d px-5 md:px-8 py-2.5 md:py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold text-xs md:text-sm flex items-center gap-2.5 shadow-xl shadow-indigo-950/60 transition-all cursor-pointer active:scale-95 border border-indigo-400/30"
-              title={
-                currentIndex < quizSet.questions.length - 1
-                  ? 'Lanjut ke soal berikutnya (Panah Kanan / Enter)'
-                  : 'Lihat hasil akhir kuis'
-              }
-            >
-              <span>
-                {currentIndex < quizSet.questions.length - 1
-                  ? 'Selanjutnya'
-                  : 'Selesai & Hasil'}
-              </span>
-              <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
-            </button>
-          </div>
+          {/* Tombol Selanjutnya di kanan */}
+          <button
+            type="button"
+            onClick={handleNextQuestion}
+            className="btn-3d px-5 md:px-8 py-2.5 md:py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold text-xs md:text-sm flex items-center gap-2.5 shadow-xl shadow-indigo-950/60 transition-all cursor-pointer active:scale-95 border border-indigo-400/30"
+          >
+            <span>
+              {currentIndex < quizSet.questions.length - 1 ? 'Selanjutnya' : 'Selesai & Hasil'}
+            </span>
+            <ArrowRight className="w-4 h-4 md:w-5 md:h-5" />
+          </button>
         </div>
       </div>
 
-      {/* Answer Feedback & Explanation Drawer */}
-      {isAnswerSubmitted && (
-        <div className="p-5 md:p-6 rounded-3xl bg-slate-900 border-2 border-indigo-500/50 shadow-2xl space-y-4 animate-in slide-in-from-bottom-4 duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
+      {/* Answer Feedback Drawer if Submitted */}
+      {isAnswerSubmitted && !feedbackOverlay && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-slate-900 border-2 border-indigo-500/40 shadow-xl space-y-3 animate-in fade-in duration-150">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
               {currentRecord?.isCorrect ? (
-                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400 shrink-0">
-                  <CheckCircle2 className="w-8 h-8 stroke-[2.5]" />
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/40">
+                  <CheckCircle2 className="w-5 h-5" />
                 </div>
               ) : (
-                <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/40 flex items-center justify-center text-rose-400 shrink-0">
-                  <XCircle className="w-8 h-8 stroke-[2.5]" />
+                <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/40">
+                  <XCircle className="w-5 h-5" />
                 </div>
               )}
-
               <div>
-                <h3 className="text-lg md:text-xl font-black text-white">
+                <span className="text-xs font-black text-white block">
                   {currentRecord?.isCorrect
-                    ? `Luar Biasa! Jawaban Benar (+${currentRecord?.pointsEarned ?? 0} Poin)`
-                    : currentRecord?.userAnswer === '(Membuka Kunci Jawaban)'
-                    ? 'Kunci Jawaban Terbuka (Mode Belajar)'
-                    : 'Kurang Tepat, Jangan Menyerah!'}
-                </h3>
-                <p className="text-xs text-slate-400">
-                  Kunci:{' '}
-                  <strong className="text-indigo-300 font-semibold">
-                    {currentQuestion.correctAnswer}
-                  </strong>
-                </p>
+                    ? `Jawaban Benar (+${currentRecord.pointsEarned} Poin)`
+                    : 'Kurang Tepat'}
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  Kunci: <strong className="text-emerald-300">{currentQuestion.correctAnswer}</strong>
+                </span>
               </div>
             </div>
 
-            <div className="flex items-center gap-2 ml-auto">
-              <button
-                type="button"
-                onClick={() => setIsRevealModalOpen(true)}
-                className="px-3.5 py-3 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-1.5 transition-all bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-white border border-amber-500/40 cursor-pointer"
-                title="Buka Pop-up Kunci Jawaban Detail"
-              >
-                <KeyRound className="w-4 h-4 text-amber-400" />
-                <span>Detail Kunci</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handlePrevQuestion}
-                disabled={currentIndex === 0}
-                className={`px-4 py-3 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-1.5 transition-all ${
-                  currentIndex === 0
-                    ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 cursor-pointer'
-                }`}
-              >
-                <ArrowLeft className="w-4 h-4" />
-                <span>Sebelum</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleNextQuestion}
-                className="btn-3d px-6 py-3.5 bg-gradient-to-r from-indigo-600 to-sky-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold rounded-2xl flex items-center justify-center gap-2 shadow-xl shadow-indigo-950/50 cursor-pointer text-sm md:text-base"
-              >
-                <span>
-                  {currentIndex < quizSet.questions.length - 1
-                    ? 'Selanjutnya'
-                    : 'Lihat Hasil Akhir'}
-                </span>
-                <ArrowRight className="w-5 h-5" />
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsRevealModalOpen(true)}
+              className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 font-extrabold text-xs flex items-center gap-1.5 border border-amber-500/30 cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Detail Pembahasan</span>
+            </button>
           </div>
 
-          {/* Pembahasan Detail */}
-          <div className="p-4 rounded-2xl bg-indigo-950/30 border border-indigo-500/30 text-xs md:text-sm text-indigo-200/90 leading-relaxed">
-            <strong className="text-indigo-300 font-bold block mb-1 flex items-center gap-1.5">
-              <BookOpen className="w-4 h-4 text-indigo-400" />
-              <span>Pembahasan Lengkap:</span>
-            </strong>
-            <p>{currentQuestion.explanation}</p>
+          <div className="p-3 rounded-xl bg-slate-800/60 border border-slate-700 text-xs text-slate-300 leading-relaxed">
+            <strong className="text-indigo-300 block mb-0.5">Pembahasan:</strong>
+            <p>{currentQuestion.explanation || 'Pembahasan materi untuk memperdalam pemahaman.'}</p>
           </div>
         </div>
       )}
 
-      {/* MODAL BUKA JAWABAN (WAYGROUND STYLE) */}
+      {/* WAYGROUND MEME / REACTION OVERLAY (On each answer) */}
+      {feedbackOverlay && (
+        <WaygroundFeedbackOverlay
+          isCorrect={feedbackOverlay.isCorrect}
+          question={feedbackOverlay.question}
+          userAnswer={feedbackOverlay.userAnswer}
+          pointsEarned={feedbackOverlay.pointsEarned}
+          streak={streak}
+          speedBonus={feedbackOverlay.speedBonus}
+          currentRank={currentRank}
+          onNext={handleNextQuestion}
+          onOpenReveal={() => {
+            setFeedbackOverlay(null);
+            setIsRevealModalOpen(true);
+          }}
+        />
+      )}
+
+      {/* WAYGROUND DETAIL KUNCI JAWABAN MODAL */}
       {isRevealModalOpen && currentQuestion && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
           <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-xl w-full p-5 md:p-7 shadow-2xl shadow-amber-950/40 relative overflow-hidden flex flex-col max-h-[90vh]">
-            {/* Glow background decoration */}
-            <div className="absolute -top-24 -right-24 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
-            <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
-
-            {/* Header Modal */}
             <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-4 shrink-0">
               <div className="flex items-center gap-3">
-                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 shadow-inner">
-                  <KeyRound className="w-6 h-6 animate-pulse" />
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0">
+                  <KeyRound className="w-5 h-5 animate-pulse" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base md:text-lg font-black text-white">
-                      Kunci Jawaban Terbuka
-                    </h3>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500/20 to-emerald-500/20 text-amber-300 border border-amber-500/30">
-                      Wayground Mode
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    Soal {currentIndex + 1} dari {quizSet.questions.length} • {currentQuestion.subject || quizSet.category}
-                  </p>
+                  <h3 className="text-base sm:text-lg font-black text-white">
+                    Kunci Jawaban Resmi
+                  </h3>
+                  <span className="text-xs text-slate-400">
+                    Soal {currentIndex + 1} dari {quizSet.questions.length} • Wayground Mode
+                  </span>
                 </div>
               </div>
 
               <button
                 type="button"
-                onClick={() => {
-                  sounds.playClick();
-                  setIsRevealModalOpen(false);
-                }}
+                onClick={() => setIsRevealModalOpen(false)}
                 className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer border border-slate-700"
-                title="Tutup"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Scrollable Body */}
             <div className="py-4 space-y-4 overflow-y-auto pr-1">
-              {/* Pertanyaan */}
-              <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4">
-                <span className="text-[10px] font-black tracking-wider uppercase text-slate-400 block mb-1">
+              <div className="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block mb-1">
                   Pertanyaan:
                 </span>
-                <p className="text-sm md:text-base font-bold text-white leading-relaxed">
+                <p className="text-sm sm:text-base font-bold text-white">
                   {currentQuestion.question}
                 </p>
               </div>
 
-              {/* Kotak Jawaban Benar */}
-              <div className="bg-emerald-950/60 border-2 border-emerald-500/60 rounded-2xl p-4 shadow-lg shadow-emerald-950/30">
-                <div className="flex items-center gap-2 text-emerald-400 font-black text-xs uppercase tracking-wider mb-2">
-                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
-                  <span>Kunci Jawaban Resmi:</span>
+              <div className="bg-emerald-950/60 border-2 border-emerald-500/60 rounded-2xl p-4 space-y-1.5">
+                <div className="text-xs font-black text-emerald-400 flex items-center gap-1.5 uppercase">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Kunci Jawaban Benar:</span>
                 </div>
-
-                <div className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3.5">
-                  {currentQuestion.type === 'multiple_choice' && (
-                    <div className="space-y-1">
-                      {(() => {
-                        let optLetter = '';
-                        let optText = currentQuestion.correctAnswer;
-                        if (currentQuestion.options) {
-                          let idx = currentQuestion.correctIndex;
-                          if (idx === undefined || idx < 0) {
-                            idx = currentQuestion.options.indexOf(currentQuestion.correctAnswer);
-                          }
-                          if (idx !== undefined && idx >= 0 && currentQuestion.options[idx]) {
-                            optLetter = ['A', 'B', 'C', 'D', 'E'][idx] || '';
-                            optText = currentQuestion.options[idx];
-                          }
-                        }
-                        return (
-                          <div className="flex items-center gap-2.5">
-                            {optLetter && (
-                              <span className="w-7 h-7 rounded-lg bg-emerald-500 text-white font-black text-sm flex items-center justify-center shrink-0">
-                                {optLetter}
-                              </span>
-                            )}
-                            <span className="text-base md:text-lg font-black text-emerald-300">
-                              {optText}
-                            </span>
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
-                  {currentQuestion.type === 'true_false' && (
-                    <div className="flex items-center gap-2.5">
-                      <span className="px-3 py-1 rounded-lg bg-emerald-500 text-white font-black text-sm">
-                        {(currentQuestion.isTrue ?? (currentQuestion.correctAnswer.toLowerCase() === 'benar'))
-                          ? 'BENAR'
-                          : 'SALAH'}
-                      </span>
-                      <span className="text-xs text-slate-300">
-                        Pernyataan pada soal ini bernilai{' '}
-                        <strong className="text-emerald-300 font-extrabold">
-                          {(currentQuestion.isTrue ?? (currentQuestion.correctAnswer.toLowerCase() === 'benar'))
-                            ? 'BENAR'
-                            : 'SALAH'}
-                        </strong>.
-                      </span>
-                    </div>
-                  )}
-
-                  {currentQuestion.type === 'fill_blank' && (
-                    <div className="space-y-2">
-                      <div className="text-base md:text-lg font-black text-emerald-300">
-                        {currentQuestion.correctAnswer}
-                      </div>
-                      {currentQuestion.acceptableAnswers && currentQuestion.acceptableAnswers.length > 0 && (
-                        <div className="text-xs text-slate-400">
-                          <span className="text-slate-500">Variasi jawaban lain yang diterima: </span>
-                          <span className="text-emerald-400/90 font-medium">
-                            {currentQuestion.acceptableAnswers
-                              .filter((a) => a.toLowerCase() !== currentQuestion.correctAnswer.toLowerCase())
-                              .join(', ') || '-'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {currentQuestion.type === 'matching' && (
-                    <div className="space-y-2">
-                      <span className="text-xs text-slate-400 font-bold block">
-                        Pasangan yang tepat:
-                      </span>
-                      <div className="space-y-1.5">
-                        {(currentQuestion.matchingPairs || []).map((pair, pIdx) => (
-                          <div
-                            key={pair.id || pIdx}
-                            className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-800 border border-emerald-500/20 text-xs sm:text-sm"
-                          >
-                            <span className="font-bold text-slate-200">{pair.left}</span>
-                            <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                            <span className="font-extrabold text-emerald-300 text-right">{pair.right}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
+                <div className="p-3 rounded-xl bg-slate-900 border border-emerald-500/40 text-base sm:text-lg font-black text-emerald-300">
+                  {currentQuestion.correctAnswer}
                 </div>
               </div>
 
-              {/* Pembahasan / Penjelasan */}
-              <div className="bg-indigo-950/40 border border-indigo-500/40 rounded-2xl p-4 space-y-2">
-                <div className="flex items-center gap-2 text-indigo-400 font-black text-xs uppercase tracking-wider">
+              <div className="bg-indigo-950/40 border border-indigo-500/40 rounded-2xl p-4 space-y-1.5">
+                <div className="text-xs font-black text-indigo-400 flex items-center gap-1.5 uppercase">
                   <BookOpen className="w-4 h-4" />
                   <span>Pembahasan Materi:</span>
                 </div>
                 <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-                  {currentQuestion.explanation || 'Pembahasan materi pembelajaran untuk soal ini.'}
+                  {currentQuestion.explanation || 'Pembahasan materi pembelajaran untuk memperdalam konsep.'}
                 </p>
               </div>
 
-              {/* Petunjuk Tambahan jika ada */}
               {currentQuestion.hint && (
-                <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-3 flex items-start gap-2.5">
+                <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-3 flex items-start gap-2">
                   <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                  <div className="text-xs text-amber-200/90">
-                    <strong className="text-amber-300 font-bold">Petunjuk Soal: </strong>
-                    {currentQuestion.hint}
-                  </div>
+                  <p className="text-xs text-amber-200">
+                    <strong>Petunjuk: </strong>{currentQuestion.hint}
+                  </p>
                 </div>
               )}
             </div>
 
-            {/* Footer Buttons */}
             <div className="pt-4 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
               <button
                 type="button"
-                onClick={() => {
-                  sounds.playClick();
-                  setIsRevealModalOpen(false);
-                }}
-                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs cursor-pointer border border-slate-700 transition-colors"
+                onClick={() => setIsRevealModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer"
               >
                 Tutup Kunci
               </button>
@@ -1094,17 +1006,12 @@ export const QuizPlayer: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => {
-                  sounds.playClick();
                   setIsRevealModalOpen(false);
                   handleNextQuestion();
                 }}
-                className="btn-3d px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/50 transition-all"
+                className="btn-3d px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-md"
               >
-                <span>
-                  {currentIndex < quizSet.questions.length - 1
-                    ? 'Lanjut Soal Berikutnya'
-                    : 'Lihat Hasil Kuis'}
-                </span>
+                <span>Lanjut Soal Berikutnya</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
