@@ -106,7 +106,7 @@ export const ShareQuizModal: React.FC<Props> = ({ quiz, onClose, onLaunchMode })
         <div className="p-3.5 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 text-xs text-indigo-200 flex items-start gap-2.5">
           <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
           <p className="leading-relaxed">
-            <strong>Tautan Universal:</strong> Tautan yang disalin di bawah ini memuat data paket soal secara mandiri. Siapapun yang membuka link ini (di link Publish, HP siswa, maupun browser lain) akan langsung mendapatkan kuis ini!
+            <strong>Tautan Khusus Siswa:</strong> Saat siswa membuka tautan ini di HP atau laptop mereka, tampilan siswa <strong>hanya menampilkan materi/soal yang dibagikan ini</strong> saja secara terarah (tidak menampilkan seluruh bank soal / materi lain).
           </p>
         </div>
 

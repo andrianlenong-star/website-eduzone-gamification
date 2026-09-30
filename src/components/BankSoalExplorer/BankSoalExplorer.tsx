@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { QuizSet, Jenjang, MataPelajaran, GameMode, QuestionType } from '../../types';
 import { sounds } from '../../utils/audio';
+import { getQuizQuestionBreakdown } from '../../utils/quizStats';
 import { ShareQuizModal } from './ShareQuizModal';
 import { ImportExportModal } from './ImportExportModal';
 import {
@@ -35,6 +36,7 @@ import {
   EyeOff,
   Timer,
   TimerOff,
+  Edit3,
 } from 'lucide-react';
 
 interface Props {
@@ -44,6 +46,7 @@ interface Props {
   onImportQuiz?: (quiz: QuizSet) => void;
   onImportMultiple?: (quizzes: QuizSet[]) => void;
   onDeleteQuiz?: (id: string) => void;
+  onEditQuiz?: (quiz: QuizSet) => void;
   timerEnabled?: boolean;
   onToggleTimer?: () => void;
 }
@@ -55,6 +58,7 @@ export const BankSoalExplorer: React.FC<Props> = ({
   onImportQuiz = () => {},
   onImportMultiple = () => {},
   onDeleteQuiz,
+  onEditQuiz,
   timerEnabled = true,
   onToggleTimer,
 }) => {
@@ -384,11 +388,7 @@ export const BankSoalExplorer: React.FC<Props> = ({
       {viewTab === 'pakets' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredQuizzes.map((quiz) => {
-            // Detect format presence in this quiz
-            const hasMC = quiz.questions.some((q) => q.type === 'multiple_choice');
-            const hasTF = quiz.questions.some((q) => q.type === 'true_false');
-            const hasFill = quiz.questions.some((q) => q.type === 'fill_blank');
-            const hasMatching = quiz.questions.some((q) => q.type === 'matching');
+            const breakdown = getQuizQuestionBreakdown(quiz);
 
             return (
               <div
@@ -418,8 +418,8 @@ export const BankSoalExplorer: React.FC<Props> = ({
                           Kuis Saya
                         </span>
                       )}
-                      <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                        {quiz.questions.length} Soal
+                      <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-600/30 text-indigo-300 border border-indigo-500/40">
+                        {breakdown.total} Soal
                       </span>
                     </div>
                   </div>
@@ -434,28 +434,29 @@ export const BankSoalExplorer: React.FC<Props> = ({
                     </p>
                   </div>
 
-                  {/* Question Formats Pills */}
-                  <div className="pt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-                    {hasMC && (
-                      <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-bold">
-                        Pilgan
+                  {/* Penjelasan Lengkap Jumlah Soal pada Tiap Materi */}
+                  <div className="pt-2 border-t border-slate-800/80 space-y-1.5">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-extrabold text-slate-300">
+                        📋 Jumlah: {breakdown.total} Butir Soal
                       </span>
-                    )}
-                    {hasTF && (
-                      <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 font-bold">
-                        Benar/Salah
+                      <span className="text-[11px] font-semibold text-slate-400">
+                        ~{breakdown.estimatedMinutes} Menit
                       </span>
-                    )}
-                    {hasFill && (
-                      <span className="px-2 py-0.5 rounded bg-violet-500/10 text-violet-300 border border-violet-500/20 font-bold">
-                        Isian
-                      </span>
-                    )}
-                    {hasMatching && (
-                      <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 font-bold">
-                        Menjodohkan
-                      </span>
-                    )}
+                    </div>
+                    <p className="text-[11px] text-slate-400 leading-snug">
+                      {breakdown.detailedText}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                      {breakdown.badges.map((b, bIdx) => (
+                        <span
+                          key={bIdx}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-black border ${b.color}`}
+                        >
+                          {b.label}: {b.count}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -471,14 +472,28 @@ export const BankSoalExplorer: React.FC<Props> = ({
                       <Printer className="w-4 h-4" />
                     </button>
 
+                    {onEditQuiz && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          sounds.playClick();
+                          onEditQuiz(quiz);
+                        }}
+                        className="p-2 text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-600/30 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Edit Soal & Materi Ini"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    )}
+
                     <button
                       type="button"
                       onClick={() => {
                         sounds.playClick();
                         setShareModalQuiz(quiz);
                       }}
-                      className="px-2.5 py-1.5 text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-600/30 border border-indigo-500/30 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
-                      title="Salin Link & Bagikan Game"
+                      className="px-2.5 py-1.5 text-xs font-bold text-emerald-400 hover:text-white hover:bg-emerald-600/30 border border-emerald-500/30 rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer"
+                      title="Salin Link & Bagikan Khusus Siswa"
                     >
                       <Share2 className="w-3.5 h-3.5" />
                       <span>Bagikan</span>
@@ -819,9 +834,14 @@ export const BankSoalExplorer: React.FC<Props> = ({
               <h3 className="text-xl md:text-2xl font-black text-white mt-1">
                 {activeModalQuiz.title}
               </h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Pilih format permainan interaktif yang ingin kamu mainkan bersama paket soal ini:
-              </p>
+              <div className="mt-2 p-3 rounded-xl bg-slate-800/80 border border-slate-700/80 text-xs space-y-1">
+                <div className="font-extrabold text-indigo-300">
+                  📋 {getQuizQuestionBreakdown(activeModalQuiz).detailedText}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  Estimasi pengerjaan ~{getQuizQuestionBreakdown(activeModalQuiz).estimatedMinutes} menit • {activeModalQuiz.targetClass || activeModalQuiz.grade}
+                </div>
+              </div>
             </div>
 
             {/* Timer Setting Option Card */}

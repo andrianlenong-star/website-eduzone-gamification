@@ -49,18 +49,27 @@ export function decodeQuizFromCode(code: string): QuizSet | null {
 }
 
 // Generate complete shareable game URL that works across any browser/domain
-export function generateShareUrl(quiz: QuizSet, mode?: GameMode): string {
+export function generateShareUrl(
+  quiz: QuizSet,
+  mode?: GameMode,
+  forStudentOnly: boolean = true
+): string {
   const origin = window.location.origin;
   const encoded = encodeQuizToCode(quiz);
   const modeParam = mode ? `&mode=${mode}` : '';
+  const studentParam = forStudentOnly ? '&student=true' : '';
 
   // If encoded payload is reasonably sized (< 6000 chars), embed it directly in URL for 100% domain-independence
   if (encoded && encoded.length < 6000) {
-    return `${origin}/?shareQuiz=${encodeURIComponent(encoded)}${modeParam}`;
+    return `${origin}/?shareQuiz=${encodeURIComponent(encoded)}${modeParam}${studentParam}`;
   }
 
   // Fallback to ID-based URL
-  return `${origin}/?quizId=${encodeURIComponent(quiz.id)}${modeParam}`;
+  return `${origin}/?quizId=${encodeURIComponent(quiz.id)}${modeParam}${studentParam}`;
+}
+
+export function generateStudentShareUrl(quiz: QuizSet, mode?: GameMode): string {
+  return generateShareUrl(quiz, mode, true);
 }
 
 // Download single quiz as JSON file

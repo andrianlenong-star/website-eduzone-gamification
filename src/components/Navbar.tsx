@@ -1,12 +1,12 @@
 import React from 'react';
 import { PlayerProfile, GameMode } from '../types';
-import { Volume2, VolumeX, Sparkles, BookOpen, User, Flame, Gamepad2, PlusCircle, Timer, TimerOff } from 'lucide-react';
+import { Volume2, VolumeX, Sparkles, BookOpen, User, Flame, Gamepad2, PlusCircle, Timer, TimerOff, LayoutDashboard } from 'lucide-react';
 import { sounds } from '../utils/audio';
 import { EduZoneLogo } from './EduZoneLogo';
 
 interface Props {
-  activeTab: 'bank-soal' | 'creator';
-  setActiveTab: (tab: 'bank-soal' | 'creator') => void;
+  activeTab: 'bank-soal' | 'creator' | 'admin';
+  setActiveTab: (tab: 'bank-soal' | 'creator' | 'admin') => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
   timerEnabled?: boolean;
@@ -70,6 +70,22 @@ export const Navbar: React.FC<Props> = ({
           >
             <Sparkles className="w-4 h-4" />
             <span>Buat Soal / AI</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              sounds.playClick();
+              setActiveTab('admin');
+            }}
+            className={`px-3.5 py-1.5 rounded-xl text-xs md:text-sm font-bold flex items-center gap-1.5 transition-all cursor-pointer ${
+              activeTab === 'admin'
+                ? 'bg-indigo-600 text-white shadow-md'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <LayoutDashboard className="w-4 h-4" />
+            <span>Dashboard Admin</span>
           </button>
         </nav>
 

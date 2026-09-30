@@ -16,6 +16,8 @@ import { TwoPlayerDuel } from './components/TwoPlayerDuel/TwoPlayerDuel';
 import { WorksheetGenerator } from './components/WorksheetGenerator/WorksheetGenerator';
 import { QuestionCreator } from './components/QuestionCreator/QuestionCreator';
 import { ProfileModal } from './components/ProfileModal';
+import { StudentQuizPortal } from './components/StudentQuizPortal/StudentQuizPortal';
+import { AdminDashboard } from './components/AdminDashboard/AdminDashboard';
 import { sounds } from './utils/audio';
 import {
   decodeQuizFromCode,
@@ -120,8 +122,9 @@ export default function App() {
     return initialList.filter((q) => !deletedSet.has(q.id));
   });
 
-  const [activeTab, setActiveTab] = useState<'bank-soal' | 'creator'>('bank-soal');
+  const [activeTab, setActiveTab] = useState<'bank-soal' | 'creator' | 'admin'>('bank-soal');
   const [activeGame, setActiveGame] = useState<{ quiz: QuizSet; mode: GameMode } | null>(null);
+  const [studentSharedQuiz, setStudentSharedQuiz] = useState<QuizSet | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sounds.isEnabled());
   const [timerEnabled, setTimerEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('wayground_timer_enabled');
@@ -156,7 +159,7 @@ export default function App() {
 
   // Initial Sync from URL params and Server Storage
   useEffect(() => {
-    // 1. Check for URL query params: ?shareQuiz=... or ?quizId=... &mode=...
+    // 1. Check for URL query params: ?shareQuiz=... or ?quizId=... &mode=... &student=...
     const urlParams = new URLSearchParams(window.location.search);
     const shareQuizParam = urlParams.get('shareQuiz');
     const quizIdParam = urlParams.get('quizId');
@@ -176,17 +179,32 @@ export default function App() {
         // Save decoded quiz to server storage as well
         saveQuizToServer(decoded);
 
+        // Lock student view to ONLY this shared quiz
+        setStudentSharedQuiz(decoded);
+
         if (modeParam) {
           setActiveGame({ quiz: decoded, mode: modeParam });
         }
 
         sounds.playSuccess();
-        window.history.replaceState({}, document.title, window.location.pathname);
       }
-    } else if (quizIdParam && modeParam) {
+    } else if (quizIdParam) {
       const existing = quizSets.find((q) => q.id === quizIdParam);
       if (existing) {
-        setActiveGame({ quiz: existing, mode: modeParam });
+        setStudentSharedQuiz(existing);
+        if (modeParam) {
+          setActiveGame({ quiz: existing, mode: modeParam });
+        }
+      } else {
+        fetchServerQuizzes().then((serverQuizzes) => {
+          const found = serverQuizzes.find((q) => q.id === quizIdParam);
+          if (found) {
+            setStudentSharedQuiz(found);
+            if (modeParam) {
+              setActiveGame({ quiz: found, mode: modeParam });
+            }
+          }
+        });
       }
     }
 
@@ -347,6 +365,35 @@ export default function App() {
     });
   };
 
+  // STUDENT VIEW ONLY (when link is shared to a student)
+  if (studentSharedQuiz && !activeGame) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
+        <StudentQuizPortal
+          quiz={studentSharedQuiz}
+          onSelectGame={handleSelectGame}
+          playerProfile={playerProfile}
+          onOpenProfile={() => setIsProfileOpen(true)}
+          soundEnabled={soundEnabled}
+          onToggleSound={handleToggleSound}
+          timerEnabled={timerEnabled}
+          onToggleTimer={handleToggleTimer}
+          onExitStudentMode={() => {
+            setStudentSharedQuiz(null);
+            window.history.replaceState({}, document.title, window.location.pathname);
+          }}
+        />
+
+        {isProfileOpen && (
+          <ProfileModal
+            profile={playerProfile}
+            onClose={() => setIsProfileOpen(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
       {/* Top Navigation */}
@@ -435,6 +482,9 @@ export default function App() {
                 onImportQuiz={handleImportQuiz}
                 onImportMultiple={handleImportMultiple}
                 onDeleteQuiz={handleDeleteQuiz}
+                onEditQuiz={(quiz) => {
+                  setActiveTab('admin');
+                }}
                 timerEnabled={timerEnabled}
                 onToggleTimer={handleToggleTimer}
               />
@@ -444,6 +494,17 @@ export default function App() {
               <QuestionCreator
                 onSaveQuiz={handleSaveQuiz}
                 onCancel={() => setActiveTab('bank-soal')}
+              />
+            )}
+
+            {activeTab === 'admin' && (
+              <AdminDashboard
+                quizSets={quizSets}
+                onSaveQuiz={handleSaveQuiz}
+                onDeleteQuiz={handleDeleteQuiz}
+                onCreateNewQuiz={() => setActiveTab('creator')}
+                onSelectGame={handleSelectGame}
+                onOpenWorksheet={(quiz) => setActiveGame({ quiz, mode: 'cetak-lks' })}
               />
             )}
           </div>

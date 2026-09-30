@@ -19,6 +19,9 @@ import {
   CheckCircle2,
   XCircle,
   Sparkles,
+  KeyRound,
+  Eye,
+  X,
 } from 'lucide-react';
 
 interface Props {
@@ -57,6 +60,8 @@ export const QuizPlayer: React.FC<Props> = ({
   const [usedHint, setUsedHint] = useState(false);
   const [isHintVisible, setIsHintVisible] = useState(false);
   const [eliminatedOptions, setEliminatedOptions] = useState<string[]>([]);
+  // Modal "Buka Jawaban" ala Wayground
+  const [isRevealModalOpen, setIsRevealModalOpen] = useState(false);
 
   const timerRef = useRef<any>(null);
   const currentQuestion: Question | undefined = quizSet.questions[currentIndex];
@@ -66,6 +71,7 @@ export const QuizPlayer: React.FC<Props> = ({
 
   // Restore or reset question state when moving between questions
   useEffect(() => {
+    setIsRevealModalOpen(false);
     if (!currentQuestion) return;
     const existing = records.find((r) => r.questionId === currentQuestion.id);
     if (existing) {
@@ -262,6 +268,36 @@ export const QuizPlayer: React.FC<Props> = ({
     }
 
     submitEvaluation(ans, isCorrect, timeSpent);
+  };
+
+  // Fitur "Buka Jawaban" ala Wayground: Langsung membuka kunci & pembahasan
+  const handleRevealAnswer = () => {
+    sounds.playPowerup();
+    if (!currentQuestion) return;
+
+    if (!isAnswerSubmitted) {
+      setIsAnswerSubmitted(true);
+      setSelectedAnswer(currentQuestion.correctAnswer);
+      setTimeLeft(0);
+      clearInterval(timerRef.current);
+
+      setRecords((prev) => {
+        const filtered = prev.filter((r) => r.questionId !== currentQuestion.id);
+        return [
+          ...filtered,
+          {
+            questionId: currentQuestion.id,
+            question: currentQuestion,
+            userAnswer: '(Membuka Kunci Jawaban)',
+            isCorrect: false,
+            timeSpentSeconds: timerEnabled ? QUESTION_TIME_SECONDS - timeLeft : 0,
+            pointsEarned: 0,
+          },
+        ];
+      });
+    }
+
+    setIsRevealModalOpen(true);
   };
 
   const handlePrevQuestion = () => {
@@ -544,6 +580,17 @@ export const QuizPlayer: React.FC<Props> = ({
             <Lightbulb className="w-3.5 h-3.5 text-emerald-400" />
             <span>Petunjuk</span>
           </button>
+
+          {/* Tombol Buka Jawaban ala Wayground */}
+          <button
+            type="button"
+            onClick={handleRevealAnswer}
+            className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-amber-500/20 hover:from-amber-500/30 hover:via-emerald-500/30 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 hover:border-emerald-400 text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer shadow-md active:scale-95"
+            title="Buka Kunci Jawaban & Pembahasan (seperti Wayground)"
+          >
+            <KeyRound className="w-3.5 h-3.5 text-amber-400" />
+            <span>Buka Jawaban</span>
+          </button>
         </div>
       </div>
 
@@ -719,13 +766,25 @@ export const QuizPlayer: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Bottom Navigation Bar: 'Sebelum' di kiri & 'Selanjutnya' di sebelah kanan bawah soal */}
-          <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-3">
+          {/* Bottom Navigation Bar: 'Buka Jawaban' di kiri, 'Sebelum' di tengah, & 'Selanjutnya' di kanan */}
+          <div className="mt-8 pt-4 border-t border-slate-800/80 flex items-center justify-between gap-2 sm:gap-3">
+            {/* Tombol Buka Jawaban ala Wayground di kiri */}
+            <button
+              type="button"
+              onClick={handleRevealAnswer}
+              className="px-4 sm:px-5 py-2.5 md:py-3.5 rounded-2xl font-black text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer bg-gradient-to-r from-amber-500/20 via-emerald-500/20 to-amber-500/20 hover:from-amber-500/30 hover:via-emerald-500/30 hover:to-amber-500/30 text-amber-300 hover:text-white border border-amber-500/40 hover:border-emerald-400 shadow-lg shadow-amber-950/30 active:scale-95"
+              title="Buka Kunci Jawaban & Pembahasan Lengkap (seperti Wayground)"
+            >
+              <Eye className="w-4 h-4 md:w-5 md:h-5 text-amber-400" />
+              <span>Buka Jawaban</span>
+            </button>
+
+            {/* Tombol Sebelum di tengah */}
             <button
               type="button"
               onClick={handlePrevQuestion}
               disabled={currentIndex === 0}
-              className={`px-4 py-2.5 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer ${
+              className={`px-4 sm:px-5 py-2.5 md:py-3.5 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-2 transition-all cursor-pointer ${
                 currentIndex === 0
                   ? 'opacity-30 bg-slate-800/50 text-slate-500 border border-slate-700/50 cursor-not-allowed'
                   : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 hover:border-indigo-500/50 shadow-md active:scale-95'
@@ -744,7 +803,7 @@ export const QuizPlayer: React.FC<Props> = ({
             <button
               type="button"
               onClick={handleNextQuestion}
-              className="btn-3d px-6 md:px-8 py-2.5 md:py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold text-xs md:text-sm flex items-center gap-2.5 shadow-xl shadow-indigo-950/60 transition-all cursor-pointer active:scale-95 ml-auto border border-indigo-400/30"
+              className="btn-3d px-5 md:px-8 py-2.5 md:py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-600 hover:from-indigo-500 hover:to-sky-500 text-white font-extrabold text-xs md:text-sm flex items-center gap-2.5 shadow-xl shadow-indigo-950/60 transition-all cursor-pointer active:scale-95 border border-indigo-400/30"
               title={
                 currentIndex < quizSet.questions.length - 1
                   ? 'Lanjut ke soal berikutnya (Panah Kanan / Enter)'
@@ -781,6 +840,8 @@ export const QuizPlayer: React.FC<Props> = ({
                 <h3 className="text-lg md:text-xl font-black text-white">
                   {currentRecord?.isCorrect
                     ? `Luar Biasa! Jawaban Benar (+${currentRecord?.pointsEarned ?? 0} Poin)`
+                    : currentRecord?.userAnswer === '(Membuka Kunci Jawaban)'
+                    ? 'Kunci Jawaban Terbuka (Mode Belajar)'
                     : 'Kurang Tepat, Jangan Menyerah!'}
                 </h3>
                 <p className="text-xs text-slate-400">
@@ -793,6 +854,16 @@ export const QuizPlayer: React.FC<Props> = ({
             </div>
 
             <div className="flex items-center gap-2 ml-auto">
+              <button
+                type="button"
+                onClick={() => setIsRevealModalOpen(true)}
+                className="px-3.5 py-3 rounded-2xl font-bold text-xs md:text-sm flex items-center gap-1.5 transition-all bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-white border border-amber-500/40 cursor-pointer"
+                title="Buka Pop-up Kunci Jawaban Detail"
+              >
+                <KeyRound className="w-4 h-4 text-amber-400" />
+                <span>Detail Kunci</span>
+              </button>
+
               <button
                 type="button"
                 onClick={handlePrevQuestion}
@@ -829,6 +900,214 @@ export const QuizPlayer: React.FC<Props> = ({
               <span>Pembahasan Lengkap:</span>
             </strong>
             <p>{currentQuestion.explanation}</p>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL BUKA JAWABAN (WAYGROUND STYLE) */}
+      {isRevealModalOpen && currentQuestion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="bg-slate-900 border-2 border-amber-500/50 rounded-3xl max-w-xl w-full p-5 md:p-7 shadow-2xl shadow-amber-950/40 relative overflow-hidden flex flex-col max-h-[90vh]">
+            {/* Glow background decoration */}
+            <div className="absolute -top-24 -right-24 w-48 h-48 bg-amber-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            {/* Header Modal */}
+            <div className="flex items-center justify-between gap-3 border-b border-slate-800 pb-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center justify-center shrink-0 shadow-inner">
+                  <KeyRound className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base md:text-lg font-black text-white">
+                      Kunci Jawaban Terbuka
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-amber-500/20 to-emerald-500/20 text-amber-300 border border-amber-500/30">
+                      Wayground Mode
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400">
+                    Soal {currentIndex + 1} dari {quizSet.questions.length} • {currentQuestion.subject || quizSet.category}
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playClick();
+                  setIsRevealModalOpen(false);
+                }}
+                className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-colors cursor-pointer border border-slate-700"
+                title="Tutup"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Scrollable Body */}
+            <div className="py-4 space-y-4 overflow-y-auto pr-1">
+              {/* Pertanyaan */}
+              <div className="bg-slate-800/80 border border-slate-700/80 rounded-2xl p-4">
+                <span className="text-[10px] font-black tracking-wider uppercase text-slate-400 block mb-1">
+                  Pertanyaan:
+                </span>
+                <p className="text-sm md:text-base font-bold text-white leading-relaxed">
+                  {currentQuestion.question}
+                </p>
+              </div>
+
+              {/* Kotak Jawaban Benar */}
+              <div className="bg-emerald-950/60 border-2 border-emerald-500/60 rounded-2xl p-4 shadow-lg shadow-emerald-950/30">
+                <div className="flex items-center gap-2 text-emerald-400 font-black text-xs uppercase tracking-wider mb-2">
+                  <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+                  <span>Kunci Jawaban Resmi:</span>
+                </div>
+
+                <div className="bg-slate-900/90 border border-emerald-500/40 rounded-xl p-3.5">
+                  {currentQuestion.type === 'multiple_choice' && (
+                    <div className="space-y-1">
+                      {(() => {
+                        let optLetter = '';
+                        let optText = currentQuestion.correctAnswer;
+                        if (currentQuestion.options) {
+                          let idx = currentQuestion.correctIndex;
+                          if (idx === undefined || idx < 0) {
+                            idx = currentQuestion.options.indexOf(currentQuestion.correctAnswer);
+                          }
+                          if (idx !== undefined && idx >= 0 && currentQuestion.options[idx]) {
+                            optLetter = ['A', 'B', 'C', 'D', 'E'][idx] || '';
+                            optText = currentQuestion.options[idx];
+                          }
+                        }
+                        return (
+                          <div className="flex items-center gap-2.5">
+                            {optLetter && (
+                              <span className="w-7 h-7 rounded-lg bg-emerald-500 text-white font-black text-sm flex items-center justify-center shrink-0">
+                                {optLetter}
+                              </span>
+                            )}
+                            <span className="text-base md:text-lg font-black text-emerald-300">
+                              {optText}
+                            </span>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {currentQuestion.type === 'true_false' && (
+                    <div className="flex items-center gap-2.5">
+                      <span className="px-3 py-1 rounded-lg bg-emerald-500 text-white font-black text-sm">
+                        {(currentQuestion.isTrue ?? (currentQuestion.correctAnswer.toLowerCase() === 'benar'))
+                          ? 'BENAR'
+                          : 'SALAH'}
+                      </span>
+                      <span className="text-xs text-slate-300">
+                        Pernyataan pada soal ini bernilai{' '}
+                        <strong className="text-emerald-300 font-extrabold">
+                          {(currentQuestion.isTrue ?? (currentQuestion.correctAnswer.toLowerCase() === 'benar'))
+                            ? 'BENAR'
+                            : 'SALAH'}
+                        </strong>.
+                      </span>
+                    </div>
+                  )}
+
+                  {currentQuestion.type === 'fill_blank' && (
+                    <div className="space-y-2">
+                      <div className="text-base md:text-lg font-black text-emerald-300">
+                        {currentQuestion.correctAnswer}
+                      </div>
+                      {currentQuestion.acceptableAnswers && currentQuestion.acceptableAnswers.length > 0 && (
+                        <div className="text-xs text-slate-400">
+                          <span className="text-slate-500">Variasi jawaban lain yang diterima: </span>
+                          <span className="text-emerald-400/90 font-medium">
+                            {currentQuestion.acceptableAnswers
+                              .filter((a) => a.toLowerCase() !== currentQuestion.correctAnswer.toLowerCase())
+                              .join(', ') || '-'}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {currentQuestion.type === 'matching' && (
+                    <div className="space-y-2">
+                      <span className="text-xs text-slate-400 font-bold block">
+                        Pasangan yang tepat:
+                      </span>
+                      <div className="space-y-1.5">
+                        {(currentQuestion.matchingPairs || []).map((pair, pIdx) => (
+                          <div
+                            key={pair.id || pIdx}
+                            className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-800 border border-emerald-500/20 text-xs sm:text-sm"
+                          >
+                            <span className="font-bold text-slate-200">{pair.left}</span>
+                            <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span className="font-extrabold text-emerald-300 text-right">{pair.right}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Pembahasan / Penjelasan */}
+              <div className="bg-indigo-950/40 border border-indigo-500/40 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center gap-2 text-indigo-400 font-black text-xs uppercase tracking-wider">
+                  <BookOpen className="w-4 h-4" />
+                  <span>Pembahasan Materi:</span>
+                </div>
+                <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                  {currentQuestion.explanation || 'Pembahasan materi pembelajaran untuk soal ini.'}
+                </p>
+              </div>
+
+              {/* Petunjuk Tambahan jika ada */}
+              {currentQuestion.hint && (
+                <div className="bg-amber-950/30 border border-amber-500/30 rounded-2xl p-3 flex items-start gap-2.5">
+                  <Lightbulb className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="text-xs text-amber-200/90">
+                    <strong className="text-amber-300 font-bold">Petunjuk Soal: </strong>
+                    {currentQuestion.hint}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer Buttons */}
+            <div className="pt-4 border-t border-slate-800 flex items-center justify-between gap-3 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playClick();
+                  setIsRevealModalOpen(false);
+                }}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs cursor-pointer border border-slate-700 transition-colors"
+              >
+                Tutup Kunci
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  sounds.playClick();
+                  setIsRevealModalOpen(false);
+                  handleNextQuestion();
+                }}
+                className="btn-3d px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-xs sm:text-sm flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-950/50 transition-all"
+              >
+                <span>
+                  {currentIndex < quizSet.questions.length - 1
+                    ? 'Lanjut Soal Berikutnya'
+                    : 'Lihat Hasil Kuis'}
+                </span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
       )}
