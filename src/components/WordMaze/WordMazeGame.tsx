@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { QuizSet, Question } from '../../types';
 import { sounds } from '../../utils/audio';
-import { RotateCcw, ArrowLeft, Lightbulb, Sparkles, CheckCircle2, Award } from 'lucide-react';
+import { RotateCcw, ArrowLeft, Lightbulb, Sparkles, CheckCircle2, Award, KeyRound } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
 interface Props {
@@ -10,14 +10,64 @@ interface Props {
   onEarnReward?: (xp: number, coins: number) => void;
 }
 
+function getTargetWordForQuestion(q: Question): { word: string; displayAnswer: string } {
+  // 1. If explicit anagramWord is set and valid
+  if (q.anagramWord && q.anagramWord.trim().length >= 3) {
+    const clean = q.anagramWord.toUpperCase().replace(/[^A-Z]/g, '');
+    if (clean.length >= 3) {
+      return { word: clean, displayAnswer: q.anagramWord.trim() };
+    }
+  }
+
+  // 2. Derive directly from the real answer key
+  let raw = '';
+  if (q.type === 'multiple_choice' && q.options && q.options.length > 0) {
+    if (q.correctIndex !== undefined && q.options[q.correctIndex]) {
+      raw = q.options[q.correctIndex];
+    } else {
+      raw = q.correctAnswer || q.options[0] || '';
+    }
+  } else {
+    raw = q.correctAnswer || '';
+  }
+
+  if (q.type === 'true_false') {
+    const isTrue = q.isTrue ?? (raw.toLowerCase() === 'benar');
+    return { word: isTrue ? 'BENAR' : 'SALAH', displayAnswer: isTrue ? 'Benar' : 'Salah' };
+  }
+
+  // Strip prefixes like "A. ", "B. ", "Opsi A: "
+  const cleanedText = raw.replace(/^[A-Ea-e][\.\:\-\)]\s*/, '').trim();
+  const cleanAlpha = cleanedText.toUpperCase().replace(/[^A-Z]/g, '');
+
+  if (cleanAlpha.length >= 3) {
+    // If reasonably sized (<= 14 chars), use the exact answer letters
+    if (cleanAlpha.length <= 14) {
+      return { word: cleanAlpha, displayAnswer: cleanedText };
+    }
+    // If long sentence, take the first significant word (>= 3 chars)
+    const words = cleanedText
+      .split(/\s+/)
+      .map((w) => w.toUpperCase().replace(/[^A-Z]/g, ''))
+      .filter((w) => w.length >= 3);
+    if (words.length > 0) {
+      return { word: words[0], displayAnswer: words[0] };
+    }
+    return { word: cleanAlpha.slice(0, 10), displayAnswer: cleanedText };
+  }
+
+  return { word: 'EDUKASI', displayAnswer: 'Edukasi' };
+}
+
 export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward }) => {
   const eligibleQuestions = quizSet.questions.filter((q) => {
-    const target = q.anagramWord || (q.type === 'fill_blank' ? q.correctAnswer : null);
-    return target && target.replace(/[^A-Za-z]/g, '').length >= 3;
+    const { word } = getTargetWordForQuestion(q);
+    return word.length >= 3;
   });
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [targetWord, setTargetWord] = useState('');
+  const [displayAnswer, setDisplayAnswer] = useState('');
   const [availableTiles, setAvailableTiles] = useState<{ id: string; letter: string }[]>([]);
   const [placedTiles, setPlacedTiles] = useState<{ id: string; letter: string }[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -28,12 +78,12 @@ export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward })
 
   useEffect(() => {
     if (!currentQ) return;
-    const raw = currentQ.anagramWord || (currentQ.type === 'fill_blank' ? currentQ.correctAnswer : 'EDUKASI');
-    const clean = raw.toUpperCase().replace(/[^A-Z]/g, '');
-    setTargetWord(clean);
+    const { word, displayAnswer: disp } = getTargetWordForQuestion(currentQ);
+    setTargetWord(word);
+    setDisplayAnswer(disp);
 
     // Scramble tiles
-    const letters = clean.split('').map((ch, i) => ({
+    const letters = word.split('').map((ch, i) => ({
       id: `${ch}-${i}-${Math.random()}`,
       letter: ch,
     }));
@@ -71,6 +121,18 @@ export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward })
     setPlacedTiles((prev) => prev.filter((t) => t.id !== tile.id));
     setAvailableTiles((prev) => [...prev, tile]);
     setIsCompleted(false);
+  };
+
+  // Quick auto-solve / Reveal answer button for assistance
+  const handleAutoSolve = () => {
+    sounds.playPowerup();
+    const correctTiles = targetWord.split('').map((ch, i) => ({
+      id: `${ch}-${i}-${Math.random()}`,
+      letter: ch,
+    }));
+    setPlacedTiles(correctTiles);
+    setAvailableTiles([]);
+    setIsCompleted(true);
   };
 
   const handleNextWord = () => {
@@ -111,30 +173,48 @@ export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward })
 
       {/* Clue Card */}
       <div className="p-5 md:p-6 rounded-3xl bg-slate-900/90 border-2 border-indigo-500/30 text-center space-y-3">
-        <div className="inline-block px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300">
-          Petunjuk Pertanyaan
+        <div className="flex items-center justify-center gap-2">
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300">
+            Pertanyaan #{currentIndex + 1}
+          </span>
+          <span className="px-3 py-1 rounded-full text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">
+            {targetWord.length} Huruf
+          </span>
         </div>
-        <h3 className="text-lg md:text-xl font-bold text-white max-w-xl mx-auto">
+
+        <h3 className="text-lg md:text-xl font-bold text-white max-w-xl mx-auto leading-relaxed">
           {currentQ.question}
         </h3>
 
-        {currentQ.hint && (
-          <div className="pt-2">
-            {!revealedClue ? (
-              <button
-                type="button"
-                onClick={() => setRevealedClue(true)}
-                className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 transition-all cursor-pointer"
-              >
-                <Lightbulb className="w-3.5 h-3.5" />
-                <span>Buka Petunjuk Tambahan</span>
-              </button>
-            ) : (
-              <p className="text-xs text-amber-300 italic max-w-md mx-auto">
-                Petunjuk: {currentQ.hint}
-              </p>
-            )}
-          </div>
+        <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
+          {currentQ.hint && !revealedClue && (
+            <button
+              type="button"
+              onClick={() => setRevealedClue(true)}
+              className="inline-flex items-center gap-1.5 text-xs text-amber-400 hover:text-amber-300 font-semibold px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/20 transition-all cursor-pointer"
+            >
+              <Lightbulb className="w-3.5 h-3.5" />
+              <span>Buka Petunjuk</span>
+            </button>
+          )}
+
+          {!isCompleted && (
+            <button
+              type="button"
+              onClick={handleAutoSolve}
+              className="inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-indigo-300 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-750 border border-slate-700 transition-all cursor-pointer"
+              title="Buka Kunci Jawaban Lengkap"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Buka Kunci Jawaban</span>
+            </button>
+          )}
+        </div>
+
+        {revealedClue && currentQ.hint && (
+          <p className="text-xs text-amber-300 italic max-w-md mx-auto pt-1">
+            Petunjuk: {currentQ.hint}
+          </p>
         )}
       </div>
 
@@ -146,7 +226,7 @@ export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward })
             <div
               key={idx}
               onClick={() => placed && handleRemovePlaced(placed)}
-              className={`w-12 h-14 md:w-16 md:h-20 rounded-2xl flex items-center justify-center text-xl md:text-3xl font-black uppercase transition-all select-none cursor-pointer ${
+              className={`w-11 h-14 sm:w-14 sm:h-18 md:w-16 md:h-20 rounded-2xl flex items-center justify-center text-xl sm:text-2xl md:text-3xl font-black uppercase transition-all select-none cursor-pointer ${
                 placed
                   ? isCompleted
                     ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-950/40 ring-4 ring-emerald-300 animate-bounce'
@@ -163,7 +243,7 @@ export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward })
       {/* Available Letter Tiles */}
       <div className="p-4 rounded-2xl bg-slate-900 border border-slate-800 text-center space-y-4">
         <span className="text-xs uppercase font-extrabold text-slate-400 block tracking-wider">
-          Pilih & Susun Huruf-Huruf Berikut:
+          Pilih & Susun Huruf-Huruf Berikut Sesuai Kunci Jawaban:
         </span>
 
         <div className="flex flex-wrap items-center justify-center gap-2 md:gap-3">
@@ -172,15 +252,18 @@ export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward })
               key={tile.id}
               type="button"
               onClick={() => handleTileClick(tile)}
-              className="btn-3d w-11 h-13 md:w-14 md:h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white border-b-4 border-slate-900 text-lg md:text-2xl font-black shadow-md cursor-pointer transition-transform"
+              className="btn-3d w-11 h-13 sm:w-13 sm:h-15 md:w-14 md:h-16 rounded-xl bg-slate-800 hover:bg-slate-700 active:bg-indigo-600 text-white border-b-4 border-slate-900 text-lg md:text-2xl font-black shadow-md cursor-pointer transition-transform"
             >
               {tile.letter}
             </button>
           ))}
+          {availableTiles.length === 0 && !isCompleted && (
+            <span className="text-xs text-slate-500">Semua huruf telah diletakkan</span>
+          )}
         </div>
       </div>
 
-      {/* Success Notification */}
+      {/* Success Notification matching exact answer */}
       {isCompleted && (
         <div className="p-5 rounded-2xl bg-emerald-950/60 border border-emerald-500/50 flex flex-col sm:flex-row items-center justify-between gap-4 animate-in zoom-in-95 duration-200">
           <div className="flex items-center gap-3">
@@ -188,15 +271,20 @@ export const WordMazeGame: React.FC<Props> = ({ quizSet, onBack, onEarnReward })
             <div>
               <h4 className="text-base font-bold text-white">Susunan Kata Tepat!</h4>
               <p className="text-xs text-emerald-300">
-                Kamu menyusun kata <strong className="uppercase">{targetWord}</strong> dengan sempurna!
+                Kunci Jawaban: <strong className="text-white uppercase">{displayAnswer || targetWord}</strong>
               </p>
+              {currentQ.explanation && (
+                <p className="text-[11px] text-slate-300 mt-1 max-w-lg">
+                  {currentQ.explanation}
+                </p>
+              )}
             </div>
           </div>
 
           <button
             type="button"
             onClick={handleNextWord}
-            className="btn-3d px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md cursor-pointer whitespace-nowrap"
+            className="btn-3d px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm shadow-md cursor-pointer whitespace-nowrap shrink-0"
           >
             {currentIndex < eligibleQuestions.length - 1 ? 'Lanjut Kata Berikutnya' : 'Selesai'}
           </button>

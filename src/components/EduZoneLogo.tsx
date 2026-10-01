@@ -167,16 +167,12 @@ export const EduZoneLogo: React.FC<Props> = ({ size = 'md', showText = true }) =
       {/* Brand Typography */}
       {showText && (
         <div className="flex flex-col">
-          <div className="flex items-center gap-1.5 leading-none">
-            <span className={`font-fun font-black tracking-tight text-white ${titleSizes}`}>
-              Edu
+          <div className="flex items-center leading-none">
+            <span className={`font-fun font-black tracking-tight ${titleSizes}`}>
+              <span className="text-white">Edu</span>
+              <span className="bg-gradient-to-r from-amber-400 via-rose-400 to-cyan-300 bg-clip-text text-transparent drop-shadow-sm">Zone</span>
             </span>
-            <span
-              className={`font-fun font-black tracking-tight bg-gradient-to-r from-amber-400 via-rose-400 to-cyan-300 bg-clip-text text-transparent drop-shadow-sm ${titleSizes}`}
-            >
-              Zone
-            </span>
-            <span className="hidden sm:inline-block text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-500/30">
+            <span className="hidden sm:inline-block text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-gradient-to-r from-emerald-500/20 to-teal-500/20 text-emerald-300 border border-emerald-500/30 ml-2">
               Interactive
             </span>
           </div>

@@ -198,7 +198,7 @@ export const BankSoalExplorer: React.FC<Props> = ({
           </div>
 
           <h1 className="text-3xl md:text-5xl font-black text-white leading-tight">
-            Belajar Jadi Petualangan Seru di <span className="bg-gradient-to-r from-amber-400 via-rose-400 to-cyan-300 bg-clip-text text-transparent">Edu Zone</span>
+            Belajar Jadi Petualangan Seru di <span className="bg-gradient-to-r from-amber-400 via-rose-400 to-cyan-300 bg-clip-text text-transparent">EduZone</span>
           </h1>
 
           <p className="text-slate-300 text-sm md:text-base leading-relaxed">
@@ -414,8 +414,9 @@ export const BankSoalExplorer: React.FC<Props> = ({
 
                     <div className="flex items-center gap-1.5">
                       {quiz.isCustom && (
-                        <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider">
-                          Kuis Saya
+                        <span className="text-[10px] px-2 py-0.5 rounded-full font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 uppercase tracking-wider flex items-center gap-1">
+                          <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                          <span>Buatan Admin</span>
                         </span>
                       )}
                       <span className="text-xs px-2.5 py-0.5 rounded-full font-bold bg-indigo-600/30 text-indigo-300 border border-indigo-500/40">
@@ -479,10 +480,11 @@ export const BankSoalExplorer: React.FC<Props> = ({
                           sounds.playClick();
                           onEditQuiz(quiz);
                         }}
-                        className="p-2 text-xs font-bold text-indigo-400 hover:text-white hover:bg-indigo-600/30 rounded-xl flex items-center gap-1 transition-colors cursor-pointer"
-                        title="Edit Soal & Materi Ini"
+                        className="px-2.5 py-1.5 text-xs font-black text-indigo-300 hover:text-white bg-indigo-950/60 hover:bg-indigo-600/50 border border-indigo-500/40 rounded-xl flex items-center gap-1.5 transition-all cursor-pointer shadow-sm"
+                        title="Edit Soal & Kunci Jawaban di Dashboard Admin"
                       >
-                        <Edit3 className="w-4 h-4" />
+                        <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Edit Soal</span>
                       </button>
                     )}
 
@@ -961,16 +963,40 @@ export const BankSoalExplorer: React.FC<Props> = ({
               <button
                 type="button"
                 onClick={() => launchMode('duel-teman')}
-                className="btn-3d p-4 rounded-2xl bg-gradient-to-br from-rose-900/60 to-rose-950 border border-rose-500/40 hover:border-rose-400 text-left cursor-pointer group sm:col-span-2"
+                className="btn-3d p-4 rounded-2xl bg-gradient-to-br from-rose-900/60 to-rose-950 border border-rose-500/40 hover:border-rose-400 text-left cursor-pointer group"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-rose-600 flex items-center justify-center text-white shadow-md shrink-0">
                     <Swords className="w-5 h-5" />
                   </div>
                   <div>
-                    <h4 className="font-extrabold text-white text-sm">Duel 2 Pemain (Tantangan Teman)</h4>
+                    <h4 className="font-extrabold text-white text-sm">Duel 2 Pemain</h4>
                     <p className="text-[11px] text-slate-400">
-                      Tanding adu cepat di satu layar (Pemain 1 Merah vs Pemain 2 Biru).
+                      Tanding adu cepat di satu layar (Pemain 1 vs Pemain 2).
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              {/* 6. Cetak Lembar Kerja & Simpan File PDF */}
+              <button
+                type="button"
+                onClick={() => launchMode('cetak-lks')}
+                className="btn-3d p-4 rounded-2xl bg-gradient-to-br from-indigo-950 via-slate-900 to-indigo-950 border border-emerald-500/40 hover:border-emerald-400 text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white shadow-md shrink-0">
+                    <Printer className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <h4 className="font-extrabold text-white text-sm truncate">Cetak & Unduh File PDF</h4>
+                      <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                        PDF / Word
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Simpan file PDF lembar soal atau cetak langsung ke kertas A4.
                     </p>
                   </div>
                 </div>

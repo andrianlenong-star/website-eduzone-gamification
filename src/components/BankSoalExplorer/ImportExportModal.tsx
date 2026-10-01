@@ -86,7 +86,7 @@ export const ImportExportModal: React.FC<Props> = ({
         return;
       }
 
-      setImportStatus({ error: 'Format kode atau JSON tidak dikenali sebagai paket soal Edu Zone yang valid.' });
+      setImportStatus({ error: 'Format kode atau JSON tidak dikenali sebagai paket soal EduZone yang valid.' });
       sounds.playError();
     } catch (err: any) {
       setImportStatus({ error: `Gagal membaca format: ${err?.message || 'Data tidak valid'}` });

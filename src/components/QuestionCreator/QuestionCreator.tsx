@@ -16,6 +16,10 @@ import {
   GraduationCap,
   Copy,
   Infinity,
+  Edit3,
+  Check,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 
 export const GRADE_CLASSES_MAP: Record<Jenjang, { id: string; name: string; fase?: string }[]> = {
@@ -78,6 +82,13 @@ export const QuestionCreator: React.FC<Props> = ({ onSaveQuiz, onCancel }) => {
   const [targetClass, setTargetClass] = useState<string>('Kelas 7 SMP');
   const [difficulty, setDifficulty] = useState<Difficulty>('Sedang');
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [editingPackageQuestionIdx, setEditingPackageQuestionIdx] = useState<number | null>(null);
+
+  const handleUpdatePackageQuestion = (idx: number, patch: Partial<Question>) => {
+    const updated = [...questions];
+    updated[idx] = { ...updated[idx], ...patch };
+    setQuestions(updated);
+  };
 
   // Current editing question in manual form
   const [qType, setQType] = useState<QuestionType>('multiple_choice');
@@ -190,7 +201,7 @@ export const QuestionCreator: React.FC<Props> = ({ onSaveQuiz, onCancel }) => {
       let userMsg = rawMsg;
       if (rawMsg.includes('503') || rawMsg.includes('high demand') || rawMsg.includes('UNAVAILABLE')) {
         userMsg =
-          'Server Google AI sedang mengalami lonjakan antrean trafik (503 High Demand). Sistem Edu Zone telah mengaktifkan perlindungan multi-model dan generator cadangan. Silakan coba klik tombol Buat lagi.';
+          'Server Google AI sedang mengalami lonjakan antrean trafik (503 High Demand). Sistem EduZone telah mengaktifkan perlindungan multi-model dan generator cadangan. Silakan coba klik tombol Buat lagi.';
       } else if (rawMsg.includes('quota') || rawMsg.includes('Resource exhausted') || rawMsg.includes('429')) {
         userMsg =
           'Batas kuota harian server AI sedang terisi penuh. Sistem telah beralih ke generator kurikulum pintar cadangan.';
@@ -339,7 +350,7 @@ export const QuestionCreator: React.FC<Props> = ({ onSaveQuiz, onCancel }) => {
             <span>
               Studio Pembuat Soal{' '}
               <span className="bg-gradient-to-r from-amber-400 via-rose-400 to-cyan-300 bg-clip-text text-transparent">
-                Edu Zone
+                EduZone
               </span>
             </span>
             <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-black uppercase bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
@@ -1002,50 +1013,336 @@ export const QuestionCreator: React.FC<Props> = ({ onSaveQuiz, onCancel }) => {
               </div>
             ) : (
               <div className="space-y-3">
-                {questions.map((q, idx) => (
-                  <div
-                    key={q.id || idx}
-                    className="p-4 rounded-2xl bg-slate-900 border border-slate-800 flex items-start justify-between gap-3 hover:border-slate-700 transition-colors"
-                  >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="w-6 h-6 rounded-lg bg-slate-800 text-xs font-bold flex items-center justify-center text-slate-300">
-                          #{idx + 1}
-                        </span>
-                        <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                          {q.type.replace('_', ' ')}
-                        </span>
+                {questions.map((q, idx) => {
+                  const isEditingThis = editingPackageQuestionIdx === idx;
+
+                  return (
+                    <div
+                      key={q.id || idx}
+                      className={`rounded-2xl border transition-all ${
+                        isEditingThis
+                          ? 'bg-slate-900 border-indigo-500/80 shadow-xl ring-2 ring-indigo-500/30'
+                          : 'bg-slate-900 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      {/* Summary Row */}
+                      <div className="p-4 flex items-start justify-between gap-3">
+                        <div className="space-y-1 flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="w-6 h-6 rounded-lg bg-slate-800 text-xs font-bold flex items-center justify-center text-slate-300">
+                              #{idx + 1}
+                            </span>
+                            <span className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                              {q.type.replace('_', ' ')}
+                            </span>
+                            {isEditingThis && (
+                              <span className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 font-extrabold uppercase border border-amber-500/30">
+                                Mode Edit
+                              </span>
+                            )}
+                          </div>
+
+                          <h4 className="text-sm font-bold text-white line-clamp-2">{q.question || '(Belum ada teks pertanyaan)'}</h4>
+
+                          <div className="text-xs text-slate-400">
+                            Kunci Jawaban:{' '}
+                            <strong className="text-emerald-400 font-semibold">{q.correctAnswer || '(Belum ditentukan)'}</strong>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              sounds.playClick();
+                              setEditingPackageQuestionIdx(isEditingThis ? null : idx);
+                            }}
+                            className={`px-2.5 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer ${
+                              isEditingThis
+                                ? 'bg-indigo-600 text-white shadow-md'
+                                : 'text-emerald-400 hover:text-emerald-300 hover:bg-emerald-500/10 border border-emerald-500/30'
+                            }`}
+                            title="Edit Soal & Kunci Jawaban"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                            <span>{isEditingThis ? 'Tutup' : 'Edit'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicateQuestion(q)}
+                            className="p-2 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-xl transition-colors cursor-pointer"
+                            title="Gandakan Soal Ini"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveQuestion(q.id)}
+                            className="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
+                            title="Hapus Soal"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
 
-                      <h4 className="text-sm font-bold text-white">{q.question}</h4>
+                      {/* Inline Question Editor */}
+                      {isEditingThis && (
+                        <div className="p-4 sm:p-5 border-t border-slate-800 bg-slate-950/70 rounded-b-2xl space-y-4">
+                          {/* Question Text */}
+                          <div>
+                            <label className="block text-xs font-bold text-slate-400 mb-1">
+                              Teks Pertanyaan *
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={q.question}
+                              onChange={(e) => handleUpdatePackageQuestion(idx, { question: e.target.value })}
+                              placeholder="Tuliskan pertanyaan di sini..."
+                              className="w-full px-3.5 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs sm:text-sm text-white focus:outline-none focus:border-indigo-500 font-bold"
+                            />
+                          </div>
 
-                      <div className="text-xs text-slate-400">
-                        Kunci Jawaban:{' '}
-                        <strong className="text-emerald-400 font-semibold">{q.correctAnswer}</strong>
-                      </div>
+                          {/* Multiple Choice Editor */}
+                          {q.type === 'multiple_choice' && (() => {
+                            const opts = q.options && q.options.length > 0 ? q.options : ['Opsi A', 'Opsi B', 'Opsi C', 'Opsi D'];
+                            const letters = ['A', 'B', 'C', 'D', 'E'];
+
+                            let effectiveCorrectIdx = 0;
+                            if (q.correctIndex !== undefined && q.correctIndex >= 0 && q.correctIndex < opts.length) {
+                              effectiveCorrectIdx = q.correctIndex;
+                            } else {
+                              const foundIdx = opts.findIndex(
+                                (opt) => opt.trim().toLowerCase() === (q.correctAnswer || '').trim().toLowerCase()
+                              );
+                              if (foundIdx !== -1) effectiveCorrectIdx = foundIdx;
+                            }
+
+                            const handleSetCorrect = (targetIdx: number) => {
+                              const chosen = opts[targetIdx] || '';
+                              handleUpdatePackageQuestion(idx, {
+                                correctIndex: targetIdx,
+                                correctAnswer: chosen,
+                              });
+                              sounds.playClick();
+                            };
+
+                            const handleUpdateText = (targetIdx: number, val: string) => {
+                              const nextOpts = [...opts];
+                              nextOpts[targetIdx] = val;
+                              const isThisCorrect = effectiveCorrectIdx === targetIdx;
+                              const patch: Partial<Question> = { options: nextOpts };
+                              if (isThisCorrect) {
+                                patch.correctAnswer = val;
+                                patch.correctIndex = targetIdx;
+                              }
+                              handleUpdatePackageQuestion(idx, patch);
+                            };
+
+                            return (
+                              <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-3">
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800 pb-2">
+                                  <label className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
+                                    <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                    <span>Tentukan Kunci Jawaban Benar:</span>
+                                  </label>
+
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[11px] text-slate-400">Pilih Cepat Kunci:</span>
+                                    {opts.map((_, oIdx) => (
+                                      <button
+                                        key={oIdx}
+                                        type="button"
+                                        onClick={() => handleSetCorrect(oIdx)}
+                                        className={`px-2.5 py-0.5 rounded-lg text-xs font-black transition-all cursor-pointer ${
+                                          effectiveCorrectIdx === oIdx
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-slate-800 text-slate-400 hover:text-white'
+                                        }`}
+                                      >
+                                        Opsi {letters[oIdx]}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {opts.map((opt, optIdx) => {
+                                    const isCorrect = effectiveCorrectIdx === optIdx;
+
+                                    return (
+                                      <div
+                                        key={optIdx}
+                                        className={`p-2.5 rounded-xl border flex items-center gap-2.5 transition-all ${
+                                          isCorrect
+                                            ? 'bg-emerald-950/60 border-emerald-500 ring-2 ring-emerald-500/30'
+                                            : 'bg-slate-800/80 border-slate-700/80'
+                                        }`}
+                                      >
+                                        <input
+                                          type="radio"
+                                          name={`creator-correct-${q.id || idx}`}
+                                          checked={isCorrect}
+                                          onChange={() => handleSetCorrect(optIdx)}
+                                          className="w-4 h-4 accent-emerald-500 cursor-pointer shrink-0"
+                                        />
+
+                                        <button
+                                          type="button"
+                                          onClick={() => handleSetCorrect(optIdx)}
+                                          className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center cursor-pointer shrink-0 ${
+                                            isCorrect ? 'bg-emerald-500 text-white' : 'bg-slate-700 text-slate-300'
+                                          }`}
+                                        >
+                                          {letters[optIdx]}
+                                        </button>
+
+                                        <input
+                                          type="text"
+                                          value={opt}
+                                          onChange={(e) => handleUpdateText(optIdx, e.target.value)}
+                                          className="flex-1 bg-transparent border-0 text-xs sm:text-sm text-white focus:outline-none font-bold"
+                                          placeholder={`Teks Opsi ${letters[optIdx]}...`}
+                                        />
+
+                                        {isCorrect ? (
+                                          <span className="px-2 py-0.5 rounded-md bg-emerald-500 text-white font-extrabold text-[10px] uppercase shrink-0">
+                                            Kunci Benar
+                                          </span>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSetCorrect(optIdx)}
+                                            className="px-2 py-0.5 rounded-md bg-slate-700 hover:bg-emerald-600 text-slate-300 hover:text-white text-[10px] font-bold cursor-pointer shrink-0"
+                                          >
+                                            Pilih Kunci
+                                          </button>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* True / False Editor */}
+                          {q.type === 'true_false' && (() => {
+                            const isCurrentTrue =
+                              q.isTrue !== undefined
+                                ? q.isTrue
+                                : (q.correctAnswer || '').toLowerCase() === 'benar';
+
+                            return (
+                              <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+                                <label className="text-xs font-black text-emerald-400 block mb-1">
+                                  Kunci Jawaban Pernyataan Ini:
+                                </label>
+                                <div className="flex gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdatePackageQuestion(idx, {
+                                        isTrue: true,
+                                        correctAnswer: 'Benar',
+                                      });
+                                      sounds.playClick();
+                                    }}
+                                    className={`px-4 py-2 rounded-xl text-xs font-black cursor-pointer transition-all ${
+                                      isCurrentTrue
+                                        ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-400'
+                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    BENAR (True)
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdatePackageQuestion(idx, {
+                                        isTrue: false,
+                                        correctAnswer: 'Salah',
+                                      });
+                                      sounds.playClick();
+                                    }}
+                                    className={`px-4 py-2 rounded-xl text-xs font-black cursor-pointer transition-all ${
+                                      !isCurrentTrue
+                                        ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400'
+                                        : 'bg-slate-800 text-slate-400 hover:text-white'
+                                    }`}
+                                  >
+                                    SALAH (False)
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* Fill Blank Editor */}
+                          {q.type === 'fill_blank' && (
+                            <div className="p-3.5 rounded-2xl bg-slate-900 border border-slate-800 space-y-2">
+                              <label className="text-xs font-black text-emerald-400 block">
+                                Kunci Jawaban Utama Baku *
+                              </label>
+                              <input
+                                type="text"
+                                value={q.correctAnswer}
+                                onChange={(e) => handleUpdatePackageQuestion(idx, { correctAnswer: e.target.value })}
+                                className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white font-bold focus:outline-none focus:border-emerald-500"
+                                placeholder="Contoh: Fotosintesis"
+                              />
+                            </div>
+                          )}
+
+                          {/* Explanation & Hint */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                              <label className="block text-xs font-bold text-slate-400 mb-1">
+                                Pembahasan Soal
+                              </label>
+                              <input
+                                type="text"
+                                value={q.explanation || ''}
+                                onChange={(e) => handleUpdatePackageQuestion(idx, { explanation: e.target.value })}
+                                className="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white font-medium focus:outline-none"
+                                placeholder="Penjelasan jawaban..."
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold text-slate-400 mb-1">
+                                Petunjuk (Hint)
+                              </label>
+                              <input
+                                type="text"
+                                value={q.hint || ''}
+                                onChange={(e) => handleUpdatePackageQuestion(idx, { hint: e.target.value })}
+                                className="w-full px-3 py-1.5 rounded-xl bg-slate-800 border border-slate-700 text-xs text-white font-medium focus:outline-none"
+                                placeholder="Petunjuk singkat..."
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                sounds.playClick();
+                                setEditingPackageQuestionIdx(null);
+                              }}
+                              className="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-extrabold text-xs flex items-center gap-1.5 cursor-pointer shadow-md"
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Selesai Edit Soal Ini</span>
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
-
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicateQuestion(q)}
-                        className="p-2 text-indigo-400 hover:text-indigo-300 hover:bg-indigo-500/10 rounded-xl transition-colors cursor-pointer"
-                        title="Gandakan Soal Ini"
-                      >
-                        <Copy className="w-4 h-4" />
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveQuestion(q.id)}
-                        className="p-2 text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-xl transition-colors cursor-pointer"
-                        title="Hapus Soal"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

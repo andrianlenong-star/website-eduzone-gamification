@@ -60,7 +60,7 @@ export const ShareQuizModal: React.FC<Props> = ({ quiz, onClose, onLaunchMode })
       try {
         await navigator.share({
           title: `Mainkan Game Edukasi: ${quiz.title}`,
-          text: `Ayo mainkan kuis interaktif "${quiz.title}" (${quiz.questions.length} soal) di Edu Zone!`,
+          text: `Ayo mainkan kuis interaktif "${quiz.title}" (${quiz.questions.length} soal) di EduZone!`,
           url: activeShareUrl,
         });
       } catch {
@@ -68,7 +68,7 @@ export const ShareQuizModal: React.FC<Props> = ({ quiz, onClose, onLaunchMode })
       }
     } else {
       const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(
-        `Ayo mainkan kuis "${quiz.title}" (${quiz.questions.length} soal) di Edu Zone: ${activeShareUrl}`
+        `Ayo mainkan kuis "${quiz.title}" (${quiz.questions.length} soal) di EduZone: ${activeShareUrl}`
       )}`;
       window.open(waUrl, '_blank');
     }

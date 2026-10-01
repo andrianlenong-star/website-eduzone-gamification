@@ -33,7 +33,10 @@ function deduplicateQuizzes(...lists: (QuizSet[] | undefined | null)[]): QuizSet
     if (Array.isArray(list)) {
       for (const q of list) {
         if (q && q.id) {
-          map.set(q.id, q);
+          // Earlier lists (custom/edited quizzes) take absolute priority over later lists (defaults)
+          if (!map.has(q.id)) {
+            map.set(q.id, q);
+          }
         }
       }
     }
@@ -57,7 +60,7 @@ const INITIAL_PROFILE: PlayerProfile = {
     {
       id: 'b-start',
       name: 'Langkah Pertama',
-      description: 'Menyelesaikan kuis pertama di Edu Zone',
+      description: 'Menyelesaikan kuis pertama di EduZone',
       icon: '🌱',
       unlockedAt: '2026-09-01',
     },
@@ -113,7 +116,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          initialList = deduplicateQuizzes(DEFAULT_QUIZ_SETS, parsed);
+          initialList = deduplicateQuizzes(parsed, DEFAULT_QUIZ_SETS);
         }
       } catch (e) {
         initialList = DEFAULT_QUIZ_SETS;
@@ -125,6 +128,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'bank-soal' | 'creator' | 'admin'>('bank-soal');
   const [activeGame, setActiveGame] = useState<{ quiz: QuizSet; mode: GameMode } | null>(null);
   const [studentSharedQuiz, setStudentSharedQuiz] = useState<QuizSet | null>(null);
+  const [quizToEditInAdmin, setQuizToEditInAdmin] = useState<QuizSet | null>(null);
   const [soundEnabled, setSoundEnabled] = useState<boolean>(sounds.isEnabled());
   const [timerEnabled, setTimerEnabled] = useState<boolean>(() => {
     const saved = localStorage.getItem('wayground_timer_enabled');
@@ -274,7 +278,9 @@ export default function App() {
     // Persist to server backend
     saveQuizToServer(newQuiz);
 
-    setActiveTab('bank-soal');
+    if (activeTab === 'creator') {
+      setActiveTab('bank-soal');
+    }
     sounds.playWin();
   };
 
@@ -483,6 +489,7 @@ export default function App() {
                 onImportMultiple={handleImportMultiple}
                 onDeleteQuiz={handleDeleteQuiz}
                 onEditQuiz={(quiz) => {
+                  setQuizToEditInAdmin(quiz);
                   setActiveTab('admin');
                 }}
                 timerEnabled={timerEnabled}
@@ -500,6 +507,8 @@ export default function App() {
             {activeTab === 'admin' && (
               <AdminDashboard
                 quizSets={quizSets}
+                initialEditingQuiz={quizToEditInAdmin}
+                onClearInitialQuiz={() => setQuizToEditInAdmin(null)}
                 onSaveQuiz={handleSaveQuiz}
                 onDeleteQuiz={handleDeleteQuiz}
                 onCreateNewQuiz={() => setActiveTab('creator')}

@@ -36,7 +36,7 @@ export const ProfileModal: React.FC<Props> = ({ profile, onClose }) => {
               </span>
             </div>
             <p className="text-xs text-indigo-300 font-semibold mt-0.5">
-              Cendekiawan Muda Edu Zone
+              Cendekiawan Muda EduZone
             </p>
             <div className="flex items-center gap-3 mt-2 text-xs font-bold">
               <span className="text-amber-400 flex items-center gap-1">

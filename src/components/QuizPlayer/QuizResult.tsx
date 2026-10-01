@@ -81,7 +81,7 @@ export const QuizResult: React.FC<Props> = ({
   }, [accuracy]);
 
   const handleShare = () => {
-    const text = `Saya berhasil meraih Peringkat #${rank} dengan skor ${totalScore.toLocaleString('id-ID')} (Akurasi ${accuracy}%) pada kuis "${quizSet.title}" di Wayground Edu Zone! Ayo coba uji kemampuanmu!`;
+    const text = `Saya berhasil meraih Peringkat #${rank} dengan skor ${totalScore.toLocaleString('id-ID')} (Akurasi ${accuracy}%) pada kuis "${quizSet.title}" di Wayground EduZone! Ayo coba uji kemampuanmu!`;
     if (navigator.share) {
       navigator.share({ title: 'Skor Wayground', text }).catch(() => {});
     } else {

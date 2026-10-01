@@ -1,4 +1,4 @@
-// Synthesized Web Audio API sound effects for Edu Zone
+// Synthesized Web Audio API sound effects for EduZone
 class SoundManager {
   private ctx: AudioContext | null = null;
   private enabled: boolean = true;

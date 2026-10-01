@@ -340,11 +340,18 @@ export const QuizPlayer: React.FC<Props> = ({
     let isCorrect = false;
 
     if (currentQuestion.type === 'multiple_choice') {
-      if (currentQuestion.correctIndex !== undefined && currentQuestion.options) {
-        isCorrect = ans === currentQuestion.options[currentQuestion.correctIndex];
-      } else {
-        isCorrect = ans === currentQuestion.correctAnswer;
-      }
+      const optByIndex =
+        currentQuestion.correctIndex !== undefined &&
+        currentQuestion.options &&
+        currentQuestion.options[currentQuestion.correctIndex];
+      const optByAnswer =
+        currentQuestion.correctAnswer &&
+        currentQuestion.options?.find(
+          (o) => o.trim().toLowerCase() === currentQuestion.correctAnswer.trim().toLowerCase()
+        );
+
+      const expectedAnswer = optByIndex || optByAnswer || currentQuestion.correctAnswer;
+      isCorrect = ans.trim().toLowerCase() === (expectedAnswer || '').trim().toLowerCase();
     } else if (currentQuestion.type === 'true_false') {
       const actualTrue = currentQuestion.isTrue ?? (currentQuestion.correctAnswer.toLowerCase() === 'benar');
       isCorrect = (ans === 'Benar' && actualTrue) || (ans === 'Salah' && !actualTrue);

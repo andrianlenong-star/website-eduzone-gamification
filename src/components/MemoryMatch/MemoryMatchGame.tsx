@@ -241,7 +241,7 @@ export const MemoryMatchGame: React.FC<Props> = ({
               ) : (
                 <div className="flex flex-col items-center gap-1 opacity-60">
                   <span className="text-2xl">?</span>
-                  <span className="text-[10px] uppercase font-bold tracking-wider">Edu Zone</span>
+                  <span className="text-[10px] uppercase font-bold tracking-wider">EduZone</span>
                 </div>
               )}
             </div>

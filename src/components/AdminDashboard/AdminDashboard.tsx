@@ -38,6 +38,8 @@ import {
 
 interface Props {
   quizSets: QuizSet[];
+  initialEditingQuiz?: QuizSet | null;
+  onClearInitialQuiz?: () => void;
   onSaveQuiz: (quiz: QuizSet) => void;
   onDeleteQuiz?: (id: string) => void;
   onCreateNewQuiz: () => void;
@@ -59,6 +61,8 @@ const ALL_GRADES: Jenjang[] = ['SD', 'SMP', 'SMA', 'Kuliah / Umum'];
 
 export const AdminDashboard: React.FC<Props> = ({
   quizSets,
+  initialEditingQuiz,
+  onClearInitialQuiz,
   onSaveQuiz,
   onDeleteQuiz,
   onCreateNewQuiz,
@@ -76,6 +80,20 @@ export const AdminDashboard: React.FC<Props> = ({
   const [expandedQuestionIdx, setExpandedQuestionIdx] = useState<number | null>(0);
   const [editSuccessMsg, setEditSuccessMsg] = useState<string | null>(null);
   const [editErrorMsg, setEditErrorMsg] = useState<string | null>(null);
+
+  // Open quiz in editor if initialEditingQuiz was passed from BankSoal
+  React.useEffect(() => {
+    if (initialEditingQuiz) {
+      const cloned: QuizSet = JSON.parse(JSON.stringify(initialEditingQuiz));
+      setEditingQuiz(cloned);
+      setExpandedQuestionIdx(0);
+      setEditSuccessMsg(null);
+      setEditErrorMsg(null);
+      if (onClearInitialQuiz) {
+        onClearInitialQuiz();
+      }
+    }
+  }, [initialEditingQuiz]);
 
   // Delete modal state
   const [quizToDelete, setQuizToDelete] = useState<QuizSet | null>(null);
@@ -958,110 +976,309 @@ export const AdminDashboard: React.FC<Props> = ({
 
                           {/* Specific Format Editor */}
                           {/* 1. Multiple Choice */}
-                          {q.type === 'multiple_choice' && (
-                            <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-3">
-                              <div className="flex items-center justify-between">
-                                <label className="text-xs font-extrabold text-indigo-300">
-                                  Pilihan Jawaban (Pilih Lingkaran untuk Kunci Jawaban Benar):
-                                </label>
-                              </div>
+                          {q.type === 'multiple_choice' && (() => {
+                            const opts = q.options && q.options.length > 0 ? q.options : ['Opsi A', 'Opsi B', 'Opsi C', 'Opsi D'];
+                            const letters = ['A', 'B', 'C', 'D', 'E'];
 
-                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                                {(q.options || ['A', 'B', 'C', 'D']).map((opt, optIdx) => {
-                                  const isCorrect = (q.correctIndex ?? 0) === optIdx;
-                                  const letters = ['A', 'B', 'C', 'D', 'E'];
+                            // Determine effective correct index accurately
+                            let effectiveCorrectIdx = 0;
+                            if (q.correctIndex !== undefined && q.correctIndex >= 0 && q.correctIndex < opts.length) {
+                              effectiveCorrectIdx = q.correctIndex;
+                            } else {
+                              const foundIdx = opts.findIndex(
+                                (opt) => opt.trim().toLowerCase() === (q.correctAnswer || '').trim().toLowerCase()
+                              );
+                              if (foundIdx !== -1) effectiveCorrectIdx = foundIdx;
+                            }
 
-                                  return (
-                                    <div
-                                      key={optIdx}
-                                      className={`flex items-center gap-2 p-2 rounded-xl border transition-all ${
-                                        isCorrect
-                                          ? 'bg-emerald-950/40 border-emerald-500/50'
-                                          : 'bg-slate-800/80 border-slate-700/80'
-                                      }`}
+                            const handleSetCorrectOption = (optIdx: number) => {
+                              const targetOpt = opts[optIdx] || '';
+                              handleUpdateQuestion(idx, {
+                                correctIndex: optIdx,
+                                correctAnswer: targetOpt,
+                              });
+                              sounds.playClick();
+                            };
+
+                            const handleUpdateOptionText = (optIdx: number, val: string) => {
+                              const newOpts = [...opts];
+                              newOpts[optIdx] = val;
+                              const isThisCorrect = effectiveCorrectIdx === optIdx;
+                              const patch: Partial<Question> = { options: newOpts };
+                              if (isThisCorrect) {
+                                patch.correctAnswer = val;
+                                patch.correctIndex = optIdx;
+                              }
+                              handleUpdateQuestion(idx, patch);
+                            };
+
+                            const handleAddOption = () => {
+                              if (opts.length >= 5) return;
+                              const nextLetter = letters[opts.length] || 'X';
+                              handleUpdateQuestion(idx, { options: [...opts, `Pilihan ${nextLetter}`] });
+                              sounds.playClick();
+                            };
+
+                            const handleRemoveOption = (optIdx: number) => {
+                              if (opts.length <= 2) return;
+                              const newOpts = opts.filter((_, i) => i !== optIdx);
+                              let nextCorrect = effectiveCorrectIdx;
+                              if (optIdx === effectiveCorrectIdx) {
+                                nextCorrect = Math.max(0, optIdx - 1);
+                              } else if (optIdx < effectiveCorrectIdx) {
+                                nextCorrect = effectiveCorrectIdx - 1;
+                              }
+                              handleUpdateQuestion(idx, {
+                                options: newOpts,
+                                correctIndex: nextCorrect,
+                                correctAnswer: newOpts[nextCorrect] || '',
+                              });
+                              sounds.playClick();
+                            };
+
+                            return (
+                              <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/60 space-y-3.5">
+                                {/* Header with Dropdown & Quick Selector */}
+                                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-700/60 pb-3">
+                                  <div>
+                                    <label className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
+                                      <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                      <span>Kunci Jawaban Benar (Pilihan Ganda):</span>
+                                    </label>
+                                    <p className="text-[11px] text-slate-400 mt-0.5">
+                                      Klik radio, huruf, atau tombol "Jadikan Kunci" pada opsi yang benar di bawah.
+                                    </p>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-bold text-slate-400">Pilih Kunci:</span>
+                                    <select
+                                      value={effectiveCorrectIdx}
+                                      onChange={(e) => handleSetCorrectOption(parseInt(e.target.value, 10))}
+                                      className="bg-emerald-950/80 border border-emerald-500/60 text-emerald-300 font-black text-xs px-3 py-1.5 rounded-xl cursor-pointer"
                                     >
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          handleUpdateQuestion(idx, {
-                                            correctIndex: optIdx,
-                                            correctAnswer: opt,
-                                          })
-                                        }
-                                        className={`w-6 h-6 rounded-lg font-black text-xs flex items-center justify-center cursor-pointer transition-all ${
-                                          isCorrect
-                                            ? 'bg-emerald-500 text-white shadow-sm'
-                                            : 'bg-slate-700 text-slate-400 hover:text-white'
-                                        }`}
-                                        title="Jadikan Kunci Jawaban Benar"
-                                      >
-                                        {letters[optIdx]}
-                                      </button>
+                                      {opts.map((opt, oIdx) => (
+                                        <option key={oIdx} value={oIdx}>
+                                          Opsi {letters[oIdx]}: {opt ? opt.slice(0, 32) : `(Pilihan ${letters[oIdx]})`}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
 
-                                      <input
-                                        type="text"
-                                        value={opt}
-                                        onChange={(e) => {
-                                          const newOpts = [...(q.options || [])];
-                                          newOpts[optIdx] = e.target.value;
-                                          const patch: Partial<Question> = { options: newOpts };
-                                          if (isCorrect) patch.correctAnswer = e.target.value;
-                                          handleUpdateQuestion(idx, patch);
-                                        }}
-                                        className="flex-1 bg-transparent border-0 text-xs text-white focus:outline-none font-bold"
-                                        placeholder={`Opsi ${letters[optIdx]}`}
-                                      />
-                                    </div>
-                                  );
-                                })}
+                                {/* Quick Switch Pills Row */}
+                                <div className="flex flex-wrap items-center gap-2 py-1">
+                                  <span className="text-[11px] font-extrabold text-slate-400">Pilihan Cepat Kunci:</span>
+                                  {opts.map((_, oIdx) => {
+                                    const isSelected = effectiveCorrectIdx === oIdx;
+                                    return (
+                                      <button
+                                        key={oIdx}
+                                        type="button"
+                                        onClick={() => handleSetCorrectOption(oIdx)}
+                                        className={`px-3 py-1 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all cursor-pointer ${
+                                          isSelected
+                                            ? 'bg-emerald-500 text-white shadow-md shadow-emerald-950/40 ring-2 ring-emerald-400'
+                                            : 'bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 border border-slate-700'
+                                        }`}
+                                      >
+                                        {isSelected ? (
+                                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                        ) : (
+                                          <span className="w-2 h-2 rounded-full bg-slate-600" />
+                                        )}
+                                        <span>Opsi {letters[oIdx]}</span>
+                                      </button>
+                                    );
+                                  })}
+
+                                  {opts.length < 5 && (
+                                    <button
+                                      type="button"
+                                      onClick={handleAddOption}
+                                      className="px-2.5 py-1 rounded-xl text-xs font-bold text-indigo-400 hover:text-indigo-300 bg-indigo-950/40 border border-indigo-500/30 flex items-center gap-1 cursor-pointer ml-auto"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      <span>Tambah Opsi ({letters[opts.length]})</span>
+                                    </button>
+                                  )}
+                                </div>
+
+                                {/* Options Cards List */}
+                                <div className="space-y-2.5">
+                                  {opts.map((opt, optIdx) => {
+                                    const isCorrect = effectiveCorrectIdx === optIdx;
+
+                                    return (
+                                      <div
+                                        key={optIdx}
+                                        className={`p-3 rounded-2xl border-2 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ${
+                                          isCorrect
+                                            ? 'bg-emerald-950/70 border-emerald-500 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-950/30'
+                                            : 'bg-slate-800/80 border-slate-700/80 hover:border-slate-600'
+                                        }`}
+                                      >
+                                        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                                          {/* Radio button to switch correct answer */}
+                                          <input
+                                            type="radio"
+                                            name={`mc-correct-radio-${q.id || idx}`}
+                                            checked={isCorrect}
+                                            onChange={() => handleSetCorrectOption(optIdx)}
+                                            className="w-4 h-4 accent-emerald-500 cursor-pointer shrink-0"
+                                            title={`Pilih Opsi ${letters[optIdx]} sebagai Kunci Jawaban Benar`}
+                                          />
+
+                                          {/* Letter Badge Button */}
+                                          <button
+                                            type="button"
+                                            onClick={() => handleSetCorrectOption(optIdx)}
+                                            className={`w-7 h-7 rounded-xl font-black text-xs flex items-center justify-center cursor-pointer transition-all shrink-0 ${
+                                              isCorrect
+                                                ? 'bg-emerald-500 text-white shadow-md ring-2 ring-emerald-400'
+                                                : 'bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white'
+                                            }`}
+                                            title={`Klik untuk memilih Opsi ${letters[optIdx]} sebagai Kunci Jawaban Benar`}
+                                          >
+                                            {letters[optIdx]}
+                                          </button>
+
+                                          {/* Text input */}
+                                          <input
+                                            type="text"
+                                            value={opt}
+                                            onChange={(e) => handleUpdateOptionText(optIdx, e.target.value)}
+                                            className="flex-1 bg-slate-900/70 border border-slate-700/80 focus:border-indigo-500 rounded-xl px-3 py-1.5 text-xs sm:text-sm text-white focus:outline-none font-bold"
+                                            placeholder={`Tulis pilihan jawaban untuk Opsi ${letters[optIdx]}...`}
+                                          />
+                                        </div>
+
+                                        {/* Status & Action Badge/Button */}
+                                        <div className="flex items-center gap-2 shrink-0 self-end sm:self-center pl-7 sm:pl-0">
+                                          {isCorrect ? (
+                                            <span className="px-3 py-1.5 rounded-xl bg-emerald-500 text-white font-black text-xs flex items-center gap-1.5 shadow-md">
+                                              <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                              <span>KUNCI BENAR</span>
+                                            </span>
+                                          ) : (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleSetCorrectOption(optIdx)}
+                                              className="px-3 py-1.5 rounded-xl bg-slate-700 hover:bg-emerald-600 text-slate-200 hover:text-white font-extrabold text-xs flex items-center gap-1 cursor-pointer transition-all border border-slate-600 hover:border-emerald-500"
+                                            >
+                                              <span>Jadikan Kunci</span>
+                                            </button>
+                                          )}
+
+                                          {opts.length > 2 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleRemoveOption(optIdx)}
+                                              className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-950/40 transition-colors cursor-pointer"
+                                              title="Hapus pilihan opsi ini"
+                                            >
+                                              <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* 2. True / False */}
-                          {q.type === 'true_false' && (
-                            <div className="p-4 rounded-xl bg-slate-800/40 border border-slate-700/60 space-y-2">
-                              <label className="text-xs font-extrabold text-indigo-300 block mb-2">
-                                Kunci Jawaban Pernyataan Ini:
-                              </label>
+                          {q.type === 'true_false' && (() => {
+                            const isCurrentTrue =
+                              q.isTrue !== undefined
+                                ? q.isTrue
+                                : (q.correctAnswer || '').toLowerCase() === 'benar';
 
-                              <div className="flex items-center gap-3">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdateQuestion(idx, {
-                                      isTrue: true,
-                                      correctAnswer: 'Benar',
-                                    })
-                                  }
-                                  className={`px-5 py-2.5 rounded-xl font-extrabold text-xs cursor-pointer transition-all ${
-                                    (q.isTrue ?? (q.correctAnswer.toLowerCase() === 'benar'))
-                                      ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-400'
-                                      : 'bg-slate-800 text-slate-400 hover:text-white'
-                                  }`}
-                                >
-                                  BENAR (True)
-                                </button>
+                            return (
+                              <div className="p-4 rounded-2xl bg-slate-800/40 border border-slate-700/60 space-y-3">
+                                <label className="text-xs font-black text-indigo-300 flex items-center gap-1.5">
+                                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                                  <span>Pilih Kunci Jawaban Pernyataan Ini:</span>
+                                </label>
 
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    handleUpdateQuestion(idx, {
-                                      isTrue: false,
-                                      correctAnswer: 'Salah',
-                                    })
-                                  }
-                                  className={`px-5 py-2.5 rounded-xl font-extrabold text-xs cursor-pointer transition-all ${
-                                    !(q.isTrue ?? (q.correctAnswer.toLowerCase() === 'benar'))
-                                      ? 'bg-rose-600 text-white shadow-md ring-2 ring-rose-400'
-                                      : 'bg-slate-800 text-slate-400 hover:text-white'
-                                  }`}
-                                >
-                                  SALAH (False)
-                                </button>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateQuestion(idx, {
+                                        isTrue: true,
+                                        correctAnswer: 'Benar',
+                                      });
+                                      sounds.playClick();
+                                    }}
+                                    className={`p-3.5 rounded-2xl border-2 font-black text-sm flex items-center justify-between cursor-pointer transition-all ${
+                                      isCurrentTrue
+                                        ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 ring-4 ring-emerald-500/20 shadow-lg'
+                                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <div
+                                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                          isCurrentTrue
+                                            ? 'border-emerald-400 bg-emerald-500 text-white'
+                                            : 'border-slate-600'
+                                        }`}
+                                      >
+                                        {isCurrentTrue && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                      </div>
+                                      <span>BENAR (True)</span>
+                                    </div>
+                                    {isCurrentTrue ? (
+                                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-emerald-500 text-white font-extrabold uppercase">
+                                        Kunci Benar
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-500">Klik untuk Pilih</span>
+                                    )}
+                                  </button>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleUpdateQuestion(idx, {
+                                        isTrue: false,
+                                        correctAnswer: 'Salah',
+                                      });
+                                      sounds.playClick();
+                                    }}
+                                    className={`p-3.5 rounded-2xl border-2 font-black text-sm flex items-center justify-between cursor-pointer transition-all ${
+                                      !isCurrentTrue
+                                        ? 'bg-rose-950/80 border-rose-500 text-rose-300 ring-4 ring-rose-500/20 shadow-lg'
+                                        : 'bg-slate-800/60 border-slate-700 text-slate-400 hover:text-white hover:border-slate-600'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5">
+                                      <div
+                                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                          !isCurrentTrue
+                                            ? 'border-rose-400 bg-rose-500 text-white'
+                                            : 'border-slate-600'
+                                        }`}
+                                      >
+                                        {!isCurrentTrue && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                                      </div>
+                                      <span>SALAH (False)</span>
+                                    </div>
+                                    {!isCurrentTrue ? (
+                                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-rose-500 text-white font-extrabold uppercase">
+                                        Kunci Benar
+                                      </span>
+                                    ) : (
+                                      <span className="text-[11px] text-slate-500">Klik untuk Pilih</span>
+                                    )}
+                                  </button>
+                                </div>
                               </div>
-                            </div>
-                          )}
+                            );
+                          })()}
 
                           {/* 3. Fill in Blank */}
                           {q.type === 'fill_blank' && (
@@ -1225,6 +1442,20 @@ export const AdminDashboard: React.FC<Props> = ({
               </button>
 
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (editingQuiz) {
+                      onOpenWorksheet(editingQuiz);
+                    }
+                  }}
+                  className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs flex items-center gap-1.5 cursor-pointer border border-slate-700"
+                  title="Cetak atau Simpan Lembar Kerja Soal ke PDF"
+                >
+                  <Printer className="w-4 h-4 text-emerald-400" />
+                  <span>Cetak / PDF</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={handleAddQuestion}

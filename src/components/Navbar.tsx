@@ -30,7 +30,7 @@ export const Navbar: React.FC<Props> = ({
   return (
     <header className="sticky top-0 z-40 bg-slate-900/90 border-b border-slate-800 backdrop-blur-md px-3 sm:px-6 py-3">
       <div className="max-w-7xl mx-auto flex items-center justify-between gap-3">
-        {/* Brand Logo Edu Zone */}
+        {/* Brand Logo EduZone */}
         <div
           onClick={onHomeClick}
           className="cursor-pointer group select-none transition-transform hover:scale-[1.02]"
